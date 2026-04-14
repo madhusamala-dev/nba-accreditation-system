@@ -45,59 +45,14 @@ const createCriteria1Template = (): Criteria => ({
     {
       id: 'section-1-1',
       sectionNumber: '1.1',
-      title: 'Vision and Mission',
+      title: 'State the Vision and Mission of the Department and Institute',
       maxMarks: 5,
       instituteMarks: 0,
       content: '',
       attachments: [],
       isCompleted: false,
-      lastModified: new Date().toISOString(),
-      subsections: [
-        {
-          id: 'sub-1-1-vision-inst',
-          subSectionNumber: '1.1',
-          title: 'Vision of Institute',
-          maxMarks: 1.25,
-          instituteMarks: 0,
-          content: '',
-          attachments: [],
-          isCompleted: false,
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'sub-1-1-mission-inst',
-          subSectionNumber: '1.1',
-          title: 'Mission of Institute',
-          maxMarks: 1.25,
-          instituteMarks: 0,
-          content: '',
-          attachments: [],
-          isCompleted: false,
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'sub-1-1-vision-dept',
-          subSectionNumber: '1.1',
-          title: 'Vision of Department',
-          maxMarks: 1.25,
-          instituteMarks: 0,
-          content: '',
-          attachments: [],
-          isCompleted: false,
-          lastModified: new Date().toISOString()
-        },
-        {
-          id: 'sub-1-1-mission-dept',
-          subSectionNumber: '1.1',
-          title: 'Mission of Department',
-          maxMarks: 1.25,
-          instituteMarks: 0,
-          content: '',
-          attachments: [],
-          isCompleted: false,
-          lastModified: new Date().toISOString()
-        }
-      ]
+      lastModified: new Date().toISOString()
+      // No subsections - single section with one rich text editor
     },
     {
       id: 'section-1-2',
