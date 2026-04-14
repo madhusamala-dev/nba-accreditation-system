@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import RichTextEditor from './RichTextEditor';
+import { exportSARCriteriaPDF, exportSARInstituteInfoPDF } from '@/lib/pdfExport';
 import { 
   ArrowLeft, 
   Save, 
@@ -21,7 +22,8 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
-  Award
+  Award,
+  Download
 } from 'lucide-react';
 import type { SARApplication, Criteria, SectionData } from '@/lib/types';
 
@@ -90,11 +92,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     }
   }, [isOpen]);
 
-  /**
-   * Core save logic extracted so it can be called both manually and automatically.
-   * Uses refs to always read the latest editor state.
-   * Returns the updated criteria if save was performed, or null if nothing to save.
-   */
   const performSave = useCallback((
     itemToSave: ActiveItem,
     criteriaToSave: Criteria | null,
@@ -206,10 +203,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return updatedCriteria;
   }, [onUpdate]);
 
-  /**
-   * Auto-save the current active item using the latest ref values.
-   * Returns the updated criteria so callers can update local state.
-   */
   const autoSaveCurrent = useCallback((): Criteria | null => {
     const item = activeItemRef.current;
     const criteria = selectedCriteriaRef.current;
@@ -227,7 +220,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
     if (updatedCriteria) {
       setAutoSaveStatus('saved');
-      // Reset status after a brief delay
       setTimeout(() => setAutoSaveStatus('idle'), 1500);
     } else {
       setAutoSaveStatus('idle');
@@ -266,12 +258,10 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   if (!application) return null;
 
   const handleCriteriaSelect = (criteria: Criteria) => {
-    // Auto-save before switching criteria
     const updatedCriteria = autoSaveCurrent();
     if (updatedCriteria) {
       setSelectedCriteria(updatedCriteria);
     }
-    // Now switch to the new criteria
     setSelectedCriteria(criteria);
     setActiveItem(null);
     const expanded: Record<string, boolean> = {};
@@ -286,7 +276,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   const handleSelectSection = (sectionId: string) => {
     const section = selectedCriteria?.sections.find(s => s.id === sectionId);
     if (section && (!section.subsections || section.subsections.length === 0)) {
-      // Auto-save current before switching
       const updatedCriteria = autoSaveCurrent();
       if (updatedCriteria) {
         setSelectedCriteria(updatedCriteria);
@@ -296,7 +285,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   };
 
   const handleSelectSubSection = (sectionId: string, subSectionId: string) => {
-    // Don't re-save if clicking the same item
     if (
       activeItem?.type === 'subsection' &&
       activeItem.sectionId === sectionId &&
@@ -304,14 +292,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     ) {
       return;
     }
-    if (
-      activeItem?.type === 'section' &&
-      activeItem.sectionId === sectionId
-    ) {
-      // switching from parent section to its subsection — still auto-save
-    }
 
-    // Auto-save current before switching
     const updatedCriteria = autoSaveCurrent();
     if (updatedCriteria) {
       setSelectedCriteria(updatedCriteria);
@@ -320,7 +301,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   };
 
   const handleBackToCriteriaList = () => {
-    // Auto-save before going back to criteria list
     const updatedCriteria = autoSaveCurrent();
     if (updatedCriteria) {
       setSelectedCriteria(updatedCriteria);
@@ -330,9 +310,26 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   };
 
   const handleDialogClose = () => {
-    // Auto-save before closing dialog
     autoSaveCurrent();
     onClose();
+  };
+
+  /** Export a single criteria to PDF */
+  const handleExportCriteriaPDF = (criteria: Criteria) => {
+    if (!application) return;
+    // Build filename: SAR-RGUKT-CSE-2024-001-criteria1.pdf
+    const appId = application.applicationId; // e.g. SAR-RGUKT-CSE-2024-001
+    const fileName = `${appId}-criteria${criteria.criteriaNumber}.pdf`;
+    exportSARCriteriaPDF(application, criteria, fileName);
+  };
+
+  /** Export all criteria as individual PDFs */
+  const handleExportAllCriteriaPDF = () => {
+    if (!application) return;
+    for (const criteria of application.criteria) {
+      const fileName = `${application.applicationId}-criteria${criteria.criteriaNumber}.pdf`;
+      exportSARCriteriaPDF(application, criteria, fileName);
+    }
   };
 
   const getActiveTitle = (): string => {
@@ -378,7 +375,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return section.instituteMarks ?? 0;
   };
 
-  /** Manual save — uses the same core logic */
   const handleSave = () => {
     if (!activeItem || !selectedCriteria || !application) return;
 
@@ -446,7 +442,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     }
   };
 
-  /** Render the auto-save status indicator */
   const renderAutoSaveIndicator = () => {
     if (autoSaveStatus === 'idle') return null;
     return (
@@ -475,9 +470,17 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return (
       <Dialog open={isOpen} onOpenChange={handleDialogClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center gap-2 mb-4">
-            <FileText className="w-5 h-5" />
-            <h2 className="text-xl font-bold">{application.departmentName} - SAR Criteria</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              <h2 className="text-xl font-bold">{application.departmentName} - SAR Criteria</h2>
+            </div>
+            {application.criteria.length > 0 && (
+              <Button variant="outline" size="sm" onClick={handleExportAllCriteriaPDF} className="flex items-center gap-2">
+                <Download className="w-4 h-4" />
+                Export All PDFs
+              </Button>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -504,11 +507,10 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                   <Card
                     key={criteria.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleCriteriaSelect(criteria)}
                   >
                     <CardHeader className="pb-3">
                       <div className="flex justify-between items-start">
-                        <div className="flex-1">
+                        <div className="flex-1" onClick={() => handleCriteriaSelect(criteria)}>
                           <CardTitle className="text-lg">
                             Criteria {criteria.criteriaNumber}
                           </CardTitle>
@@ -516,13 +518,23 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                             {criteria.title}
                           </p>
                         </div>
-                        <Badge variant="outline" className="ml-2 flex items-center gap-1">
-                          <Award className="w-3 h-3" />
-                          {criteria.maxMarks} marks
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleExportCriteriaPDF(criteria); }}
+                            title="Export this criteria as PDF"
+                          >
+                            <Download className="w-4 h-4 text-gray-500" />
+                          </Button>
+                          <Badge variant="outline" className="flex items-center gap-1">
+                            <Award className="w-3 h-3" />
+                            {criteria.maxMarks} marks
+                          </Badge>
+                        </div>
                       </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent onClick={() => handleCriteriaSelect(criteria)}>
                       <div className="space-y-3">
                         <p className="text-sm text-gray-700">
                           {criteria.description}
@@ -537,7 +549,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
                         <Progress value={progress} className="h-2" />
 
-                        {/* Institute Marks Display */}
                         <div className="bg-gray-50 rounded-md p-2 flex items-center justify-between">
                           <span className="text-sm text-gray-600">Institute Marks:</span>
                           <span className="text-sm font-bold text-blue-700">
@@ -599,8 +610,15 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* Auto-save indicator in header */}
             {renderAutoSaveIndicator()}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleExportCriteriaPDF(selectedCriteria)}
+              title="Export this criteria as PDF"
+            >
+              <Download className="w-4 h-4" />
+            </Button>
             <div className="text-right mr-2">
               <div className="text-xs text-gray-500">Institute Marks</div>
               <div className="text-sm font-bold text-blue-700">
@@ -638,7 +656,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
                   return (
                     <div key={section.id}>
-                      {/* Section Header */}
                       <Collapsible open={isExpanded} onOpenChange={() => toggleSection(section.id)}>
                         <CollapsibleTrigger asChild>
                           <button
@@ -691,7 +708,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                           </button>
                         </CollapsibleTrigger>
 
-                        {/* Subsections */}
                         {hasSubsections && (
                           <CollapsibleContent>
                             <div className="ml-6 pl-2 border-l-2 border-gray-200 space-y-0.5 mt-0.5 mb-1">
@@ -793,7 +809,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         Use the rich text editor to format your content. Tables and images are supported.
                         <span className="text-blue-600 ml-1 font-medium">Changes are auto-saved when you switch sections.</span>
                       </p>
-                      {/* key forces re-mount when switching sections so editor gets fresh content */}
                       <RichTextEditor
                         key={activeItemKey(activeItem)}
                         content={editorContent}
@@ -809,14 +824,12 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         Section Marks
                       </h4>
                       <div className="grid grid-cols-2 gap-4">
-                        {/* Total Marks (Read-only) */}
                         <div>
                           <Label className="text-sm text-gray-600 mb-1 block">Total Marks</Label>
                           <div className="h-10 flex items-center px-3 bg-gray-100 border border-gray-200 rounded-md text-sm font-semibold text-gray-700">
                             {getActiveMaxMarks()}
                           </div>
                         </div>
-                        {/* Institute Marks (Editable) */}
                         <div>
                           <Label className="text-sm text-gray-600 mb-1 block">Institute Marks</Label>
                           <Input
@@ -844,7 +857,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         Add supporting documents, images, or other files for this section.
                       </p>
 
-                      {/* Add Attachment */}
                       <div className="flex gap-2 mb-4">
                         <Input
                           placeholder="Enter file name or URL"
@@ -858,7 +870,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         </Button>
                       </div>
 
-                      {/* Attachments List */}
                       <div className="space-y-2">
                         {attachments.map((attachment, index) => (
                           <div
@@ -895,7 +906,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={() => {
-                      // Auto-save before deselecting
                       const updatedCriteria = autoSaveCurrent();
                       if (updatedCriteria) {
                         setSelectedCriteria(updatedCriteria);

@@ -7,26 +7,19 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth';
 import { getInstitutionById } from '@/lib/data';
 import {
   type PreQualifierData,
-  type ProgramOffered,
-  type ProgramForAccreditation,
-  type AlliedDepartment,
-  type ProgramDetail,
-  type FacultyCadreRow,
-  type ComplianceRow,
   createDefaultPreQualifier,
   savePreQualifier,
   getPreQualifiersByInstitution,
   calculatePQProgress,
-  getDefaultComplianceRows,
 } from '@/lib/prequalifier';
+import { exportPreQualifierPDF } from '@/lib/pdfExport';
 import {
   Save, Send, Plus, Trash2, ChevronLeft, ChevronRight,
-  CheckCircle, AlertCircle, ClipboardList, Building2, Users, BarChart3, ShieldCheck
+  CheckCircle, AlertCircle, ClipboardList, Building2, Users, BarChart3, ShieldCheck, Download
 } from 'lucide-react';
 
 const STEPS = [
@@ -100,6 +93,11 @@ export default function PreQualifiers() {
     alert('Pre-Qualifier submitted successfully! You can now access SAR Applications.');
   };
 
+  const handleExportPDF = () => {
+    if (!pqData) return;
+    exportPreQualifierPDF(pqData, institution?.name || 'Institution');
+  };
+
   // Table row helpers
   const addRow = <T extends { id: string }>(field: keyof PreQualifierData, current: T[], template: Omit<T, 'id'>) => {
     const newRow = { ...template, id: String(current.length + 1) } as T;
@@ -140,6 +138,12 @@ export default function PreQualifiers() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {isSubmitted && (
+              <Button variant="outline" onClick={handleExportPDF} className="flex items-center gap-2">
+                <Download className="w-4 h-4" />
+                Export PDF
+              </Button>
+            )}
             <Badge variant="outline" className={
               isSubmitted ? 'bg-green-100 text-green-800 border-green-300' :
               progress > 0 ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
@@ -162,14 +166,19 @@ export default function PreQualifiers() {
         {/* Submitted Banner */}
         {isSubmitted && (
           <Card className="bg-green-50 border-green-200">
-            <CardContent className="flex items-center gap-3 py-4">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-              <div>
-                <p className="font-semibold text-green-800">Pre-Qualifier Submitted Successfully</p>
-                <p className="text-sm text-green-700">
-                  Submitted on {new Date(pqData.submittedAt || '').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. You can now access SAR Applications.
-                </p>
+            <CardContent className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+                <div>
+                  <p className="font-semibold text-green-800">Pre-Qualifier Submitted Successfully</p>
+                  <p className="text-sm text-green-700">
+                    Submitted on {new Date(pqData.submittedAt || '').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}. You can now access SAR Applications.
+                  </p>
+                </div>
               </div>
+              <Button onClick={handleExportPDF} variant="outline" size="sm" className="border-green-300 text-green-800 hover:bg-green-100">
+                <Download className="w-4 h-4 mr-1" /> Download PDF
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -726,6 +735,11 @@ export default function PreQualifiers() {
           </Button>
 
           <div className="flex gap-2">
+            {isSubmitted && (
+              <Button variant="outline" onClick={handleExportPDF}>
+                <Download className="w-4 h-4 mr-1" /> Export PDF
+              </Button>
+            )}
             {!isSubmitted && (
               <Button variant="outline" onClick={handleSave} disabled={saving}>
                 <Save className="w-4 h-4 mr-1" /> {saving ? 'Saving...' : 'Save Draft'}

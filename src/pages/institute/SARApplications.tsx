@@ -5,13 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { Calendar, User, ExternalLink, Plus, X, CheckCircle, AlertCircle, Lock } from 'lucide-react';
+import { Calendar, User, ExternalLink, Plus, X, CheckCircle, AlertCircle, Lock, Download } from 'lucide-react';
 import InstituteLayout from '@/components/InstituteLayout';
 import InstituteInformationForm from './InstituteInformationForm';
 import SARCriteriaForm from '@/components/SARCriteriaForm';
 import { useAuth } from '@/lib/auth';
 import { getSARApplicationsByInstitution, updateSARApplication } from '@/lib/data';
 import { isPreQualifierSubmitted } from '@/lib/prequalifier';
+import { exportSARInstituteInfoPDF, exportSARCriteriaPDF } from '@/lib/pdfExport';
 import type { SARApplication } from '@/lib/types';
 
 export default function SARApplications() {
@@ -27,14 +28,12 @@ export default function SARApplications() {
   const [selectedApplication, setSelectedApplication] = useState<SARApplication | null>(null);
   const [pqSubmitted, setPqSubmitted] = useState(false);
 
-  // Check pre-qualifier status
   useEffect(() => {
     if (user?.institutionId) {
       setPqSubmitted(isPreQualifierSubmitted(user.institutionId));
     }
   }, [user]);
 
-  // Load SAR applications
   useEffect(() => {
     if (user?.institutionId) {
       const apps = getSARApplicationsByInstitution(user.institutionId);
@@ -42,7 +41,6 @@ export default function SARApplications() {
     }
   }, [user]);
 
-  // Auto-open form when navigated from dashboard with ?app= query param
   useEffect(() => {
     const appId = searchParams.get('app');
     if (appId && sarApplications.length > 0) {
@@ -103,6 +101,18 @@ export default function SARApplications() {
     }
   };
 
+  const handleExportInstituteInfoPDF = (application: SARApplication) => {
+    const fileName = `${application.applicationId}-institution-information.pdf`;
+    exportSARInstituteInfoPDF(application.applicationId, {}, fileName);
+  };
+
+  const handleExportDeptAllCriteria = (application: SARApplication) => {
+    for (const criteria of application.criteria) {
+      const fileName = `${application.applicationId}-criteria${criteria.criteriaNumber}.pdf`;
+      exportSARCriteriaPDF(application, criteria, fileName);
+    }
+  };
+
   const handleStartNewApplication = () => {
     setShowDepartmentSelection(true);
     setSelectedDepartments([]);
@@ -132,7 +142,7 @@ export default function SARApplications() {
 
     const newApplications: SARApplication[] = selectedDepartments.map(deptCode => {
       const department = departments.find(d => d.code === deptCode);
-      const newApplicationId = `RGUKT-${deptCode}-${dateString}`;
+      const newApplicationId = `SAR-RGUKT-${deptCode}-${dateString}`;
 
       return {
         id: `${Date.now()}-${deptCode}`,
@@ -370,11 +380,16 @@ export default function SARApplications() {
                 <div className="flex items-center gap-1 text-sm text-gray-600">
                   <User className="w-4 h-4" />{user?.email || 'Unknown'}
                 </div>
-                <div>
+                <div className="flex items-center gap-1">
                   <Button variant="outline" size="sm" onClick={() => handleFillForm(instituteInfoApp)} className="flex items-center gap-1">
                     <ExternalLink className="w-4 h-4" />
                     {instituteInfoApp.completionPercentage === 100 ? 'View' : 'Fill'}
                   </Button>
+                  {instituteInfoApp.completionPercentage > 0 && (
+                    <Button variant="ghost" size="sm" onClick={() => handleExportInstituteInfoPDF(instituteInfoApp)} title="Export PDF">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -423,11 +438,16 @@ export default function SARApplications() {
                   <div className="flex items-center gap-1 text-sm text-gray-600">
                     <User className="w-4 h-4" />{user?.email || 'Unknown'}
                   </div>
-                  <div>
+                  <div className="flex items-center gap-1">
                     <Button variant="outline" size="sm" onClick={() => handleFillForm(application)} className="flex items-center gap-1">
                       <ExternalLink className="w-4 h-4" />
                       {application.completionPercentage === 100 ? 'View' : 'Fill'}
                     </Button>
+                    {application.criteria.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => handleExportDeptAllCriteria(application)} title="Export All Criteria PDFs">
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))
