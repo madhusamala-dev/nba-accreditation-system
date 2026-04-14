@@ -8,6 +8,7 @@ import AdminTemplates from './pages/admin/AdminTemplates';
 import InstituteDashboard from './pages/institute/InstituteDashboard';
 import SARApplications from './pages/institute/SARApplications';
 import SARTemplates from './pages/institute/SARTemplates';
+import SARGuidelines from './pages/institute/SARGuidelines';
 import { getCurrentUser } from './lib/auth';
 import { User } from './lib/types';
 
@@ -121,6 +122,14 @@ function App() {
           element={
             currentUser?.role === 'institute' ? 
             <SARTemplates /> : 
+            <Navigate to="/login" replace />
+          } 
+        />
+        <Route 
+          path="/institute/sar/guidelines" 
+          element={
+            currentUser?.role === 'institute' ? 
+            <SARGuidelines /> : 
             <Navigate to="/login" replace />
           } 
         />
