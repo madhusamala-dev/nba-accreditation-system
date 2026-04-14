@@ -1,0 +1,2616 @@
+openapi: 3.0.3
+info:
+  title: NBA Accreditation System API
+  description: |
+    RESTful API for the NBA (National Board of Accreditation) Accreditation Management System.
+    This API provides endpoints for managing institutions, pre-qualifier applications,
+    SAR (Self Assessment Report) applications, templates, and email notifications.
+    
+    ## Authentication
+    All endpoints (except login and register) require a valid JWT token in the Authorization header.
+    
+    ## Roles
+    - **ADMIN**: Full access to all endpoints, can manage institutions and review applications.
+    - **INSTITUTE**: Can manage their own institution's pre-qualifiers, SAR applications, and view templates.
+  version: 1.0.0
+  contact:
+    name: CompliEdu Support
+    email: support@compliedu.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Development Server
+  - url: https://api.compliedu.com/api/v1
+    description: Production Server
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Users
+    description: User management (Admin only)
+  - name: Institutions
+    description: Institution management
+  - name: Pre-Qualifiers
+    description: Pre-Qualifier application management
+  - name: SAR Applications
+    description: Self Assessment Report application management
+  - name: Criteria
+    description: SAR Criteria management
+  - name: Sections
+    description: SAR Section data management
+  - name: Templates
+    description: Template file management
+  - name: Email Notifications
+    description: Email notification management
+  - name: Audit Log
+    description: Audit log viewing (Admin only)
+  - name: Dashboard
+    description: Dashboard statistics and summaries
+  - name: Export
+    description: PDF export endpoints
+
+paths:
+  # ============================================================
+  # AUTHENTICATION
+  # ============================================================
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user with email and password, returns JWT token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register new institute user
+      description: Register a new institute user account. Admin accounts can only be created by existing admins.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/forgot-password:
+    post:
+      tags: [Authentication]
+      summary: Request password reset
+      description: Sends a password reset email to the user
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: rgukt@example.com
+      responses:
+        '200':
+          description: Reset email sent (always returns 200 for security)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /auth/reset-password:
+    post:
+      tags: [Authentication]
+      summary: Reset password with token
+      description: Reset user password using the token received via email
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user profile
+      description: Returns the authenticated user's profile information
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/change-password:
+    put:
+      tags: [Authentication]
+      summary: Change password
+      description: Change the authenticated user's password
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 6
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================
+  # USERS (Admin only)
+  # ============================================================
+  /users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: Get a paginated list of all users (Admin only)
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [ADMIN, INSTITUTE]
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by email or name
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedUserResponse'
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/{userId}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Users]
+      summary: Update user
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+    delete:
+      tags: [Users]
+      summary: Delete user (Admin only)
+      operationId: deleteUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: User deleted
+        '403':
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ============================================================
+  # INSTITUTIONS
+  # ============================================================
+  /institutions:
+    get:
+      tags: [Institutions]
+      summary: List all institutions
+      operationId: listInstitutions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACCREDITED, NOT_ACCREDITED]
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name, city, or state
+      responses:
+        '200':
+          description: List of institutions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedInstitutionResponse'
+
+    post:
+      tags: [Institutions]
+      summary: Create institution (Admin only)
+      operationId: createInstitution
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstitutionRequest'
+      responses:
+        '201':
+          description: Institution created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionResponse'
+
+  /institutions/{institutionId}:
+    get:
+      tags: [Institutions]
+      summary: Get institution by ID
+      operationId: getInstitutionById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: institutionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Institution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionResponse'
+        '404':
+          description: Institution not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Institutions]
+      summary: Update institution
+      operationId: updateInstitution
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: institutionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstitutionRequest'
+      responses:
+        '200':
+          description: Institution updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstitutionResponse'
+
+    delete:
+      tags: [Institutions]
+      summary: Delete institution (Admin only)
+      operationId: deleteInstitution
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: institutionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Institution deleted
+
+  # ============================================================
+  # PRE-QUALIFIERS
+  # ============================================================
+  /pre-qualifiers:
+    get:
+      tags: [Pre-Qualifiers]
+      summary: List pre-qualifiers
+      description: |
+        - Admin: Lists all pre-qualifiers across all institutions
+        - Institute: Lists only their institution's pre-qualifiers
+      operationId: listPreQualifiers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, IN_PROGRESS, SUBMITTED]
+        - name: institutionId
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter by institution (Admin only)
+      responses:
+        '200':
+          description: List of pre-qualifiers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedPreQualifierResponse'
+
+    post:
+      tags: [Pre-Qualifiers]
+      summary: Create new pre-qualifier application
+      operationId: createPreQualifier
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePreQualifierRequest'
+      responses:
+        '201':
+          description: Pre-qualifier created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreQualifierResponse'
+
+  /pre-qualifiers/{preQualifierId}:
+    get:
+      tags: [Pre-Qualifiers]
+      summary: Get pre-qualifier by ID
+      operationId: getPreQualifierById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Pre-qualifier details (includes all nested data)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreQualifierDetailResponse'
+        '404':
+          description: Pre-qualifier not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [Pre-Qualifiers]
+      summary: Update pre-qualifier (save/auto-save)
+      description: Updates the entire pre-qualifier data. Used for both manual save and auto-save.
+      operationId: updatePreQualifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePreQualifierRequest'
+      responses:
+        '200':
+          description: Pre-qualifier updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreQualifierDetailResponse'
+
+    delete:
+      tags: [Pre-Qualifiers]
+      summary: Delete pre-qualifier (only drafts)
+      operationId: deletePreQualifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Pre-qualifier deleted
+        '400':
+          description: Cannot delete submitted pre-qualifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pre-qualifiers/{preQualifierId}/submit:
+    post:
+      tags: [Pre-Qualifiers]
+      summary: Submit pre-qualifier for review
+      description: Validates all required fields and submits the pre-qualifier. Triggers email notification.
+      operationId: submitPreQualifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Pre-qualifier submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreQualifierDetailResponse'
+        '400':
+          description: Validation failed - incomplete data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /pre-qualifiers/{preQualifierId}/review:
+    post:
+      tags: [Pre-Qualifiers]
+      summary: Review pre-qualifier (Admin only)
+      description: Admin approves or rejects a submitted pre-qualifier. Triggers email notification.
+      operationId: reviewPreQualifier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [APPROVE, REJECT]
+                comments:
+                  type: string
+                  description: Review comments
+      responses:
+        '200':
+          description: Review completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  # ============================================================
+  # SAR APPLICATIONS
+  # ============================================================
+  /sar-applications:
+    get:
+      tags: [SAR Applications]
+      summary: List SAR applications
+      operationId: listSARApplications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, IN_PROGRESS, COMPLETED, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED]
+        - name: institutionId
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: departmentName
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of SAR applications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSARApplicationResponse'
+
+    post:
+      tags: [SAR Applications]
+      summary: Create new SAR application
+      description: Creates a new SAR application with default criteria template (7 criteria)
+      operationId: createSARApplication
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSARApplicationRequest'
+      responses:
+        '201':
+          description: SAR application created with default criteria
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SARApplicationResponse'
+        '400':
+          description: Pre-qualifier not submitted yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sar-applications/{sarId}:
+    get:
+      tags: [SAR Applications]
+      summary: Get SAR application by ID
+      operationId: getSARApplicationById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: SAR application details with all criteria
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SARApplicationDetailResponse'
+        '404':
+          description: SAR application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags: [SAR Applications]
+      summary: Update SAR application metadata
+      operationId: updateSARApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSARApplicationRequest'
+      responses:
+        '200':
+          description: SAR application updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SARApplicationResponse'
+
+    delete:
+      tags: [SAR Applications]
+      summary: Delete SAR application (only drafts)
+      operationId: deleteSARApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: SAR application deleted
+
+  /sar-applications/{sarId}/submit:
+    post:
+      tags: [SAR Applications]
+      summary: Submit SAR application for review
+      description: Validates completion and submits. Triggers email notification to admin.
+      operationId: submitSARApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: SAR application submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SARApplicationResponse'
+        '400':
+          description: Incomplete application
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+  /sar-applications/{sarId}/review:
+    post:
+      tags: [SAR Applications]
+      summary: Review SAR application (Admin only)
+      operationId: reviewSARApplication
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [APPROVE, REJECT]
+                comments:
+                  type: string
+      responses:
+        '200':
+          description: Review completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  # ============================================================
+  # CRITERIA & SECTIONS
+  # ============================================================
+  /sar-applications/{sarId}/criteria:
+    get:
+      tags: [Criteria]
+      summary: List all criteria for a SAR application
+      operationId: listCriteria
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: List of criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CriteriaResponse'
+
+  /sar-applications/{sarId}/criteria/{criteriaId}:
+    get:
+      tags: [Criteria]
+      summary: Get criteria with all sections
+      operationId: getCriteriaById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: criteriaId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Criteria with sections and sub-sections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CriteriaDetailResponse'
+
+  /sar-applications/{sarId}/criteria/{criteriaId}/sections/{sectionId}:
+    put:
+      tags: [Sections]
+      summary: Update section data (content, marks, completion)
+      description: Used for saving rich text content, updating marks, and marking sections as complete
+      operationId: updateSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: criteriaId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSectionRequest'
+      responses:
+        '200':
+          description: Section updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionResponse'
+
+  /sar-applications/{sarId}/criteria/{criteriaId}/sections/{sectionId}/sub-sections/{subSectionId}:
+    put:
+      tags: [Sections]
+      summary: Update sub-section data
+      operationId: updateSubSection
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: criteriaId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: sectionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: subSectionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubSectionRequest'
+      responses:
+        '200':
+          description: Sub-section updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubSectionResponse'
+
+  # ============================================================
+  # ATTACHMENTS
+  # ============================================================
+  /attachments/upload:
+    post:
+      tags: [Sections]
+      summary: Upload attachment for a section or sub-section
+      operationId: uploadAttachment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, entityType, entityId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                entityType:
+                  type: string
+                  enum: [SECTION, SUB_SECTION]
+                entityId:
+                  type: integer
+                  format: int64
+      responses:
+        '201':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentResponse'
+
+  /attachments/{attachmentId}:
+    get:
+      tags: [Sections]
+      summary: Download attachment
+      operationId: downloadAttachment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: File download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+    delete:
+      tags: [Sections]
+      summary: Delete attachment
+      operationId: deleteAttachment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Attachment deleted
+
+  # ============================================================
+  # TEMPLATES
+  # ============================================================
+  /templates:
+    get:
+      tags: [Templates]
+      summary: List all templates
+      operationId: listTemplates
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedTemplateResponse'
+
+    post:
+      tags: [Templates]
+      summary: Upload template (Admin only)
+      operationId: uploadTemplate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, label]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: "Allowed types: PDF, DOC, DOCX, CSV, XLS, XLSX, JPEG, PNG. Max 50MB."
+                label:
+                  type: string
+                  description: Display label for the template
+                  example: "SAR Template 2024"
+      responses:
+        '201':
+          description: Template uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+        '400':
+          description: Invalid file type or size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /templates/{templateId}:
+    get:
+      tags: [Templates]
+      summary: Download template file
+      operationId: downloadTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Template file download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+    delete:
+      tags: [Templates]
+      summary: Delete template (Admin only)
+      operationId: deleteTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Template deleted
+
+  # ============================================================
+  # EMAIL NOTIFICATIONS
+  # ============================================================
+  /notifications:
+    get:
+      tags: [Email Notifications]
+      summary: List email notifications (Admin only)
+      operationId: listNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, SENT, FAILED]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [REGISTRATION, PASSWORD_RESET, PQ_SUBMITTED, PQ_APPROVED, PQ_REJECTED, SAR_SUBMITTED, SAR_APPROVED, SAR_REJECTED, SAR_REVIEW_REMINDER, APPLICATION_STATUS_CHANGE, TEMPLATE_UPLOADED, GENERAL]
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedNotificationResponse'
+
+  /notifications/send:
+    post:
+      tags: [Email Notifications]
+      summary: Send custom email notification (Admin only)
+      operationId: sendNotification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendNotificationRequest'
+      responses:
+        '200':
+          description: Notification queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  /notifications/{notificationId}/retry:
+    post:
+      tags: [Email Notifications]
+      summary: Retry failed notification (Admin only)
+      operationId: retryNotification
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Notification retry queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+
+  # ============================================================
+  # EXPORT (PDF)
+  # ============================================================
+  /export/pre-qualifier/{preQualifierId}/pdf:
+    get:
+      tags: [Export]
+      summary: Export pre-qualifier as PDF
+      description: |
+        Generates a formatted PDF of the pre-qualifier application.
+        Naming convention: PQ_{InstituteName}_{ProgramName}_{Date}.pdf
+      operationId: exportPreQualifierPdf
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: preQualifierId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /export/sar/{sarId}/pdf:
+    get:
+      tags: [Export]
+      summary: Export full SAR application as PDF
+      description: |
+        Generates a formatted PDF of the complete SAR application with all criteria.
+        Naming convention: SAR_{InstituteName}_{Department}_{Date}.pdf
+      operationId: exportSARPdf
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /export/sar/{sarId}/criteria/{criteriaId}/pdf:
+    get:
+      tags: [Export]
+      summary: Export single criteria as PDF
+      description: Generates a PDF for a specific criteria of a SAR application
+      operationId: exportCriteriaPdf
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sarId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: criteriaId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  # ============================================================
+  # DASHBOARD
+  # ============================================================
+  /dashboard/admin:
+    get:
+      tags: [Dashboard]
+      summary: Admin dashboard statistics
+      operationId: getAdminDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Admin dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboardResponse'
+
+  /dashboard/institute:
+    get:
+      tags: [Dashboard]
+      summary: Institute dashboard statistics
+      operationId: getInstituteDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Institute dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstituteDashboardResponse'
+
+  # ============================================================
+  # AUDIT LOG
+  # ============================================================
+  /audit-logs:
+    get:
+      tags: [Audit Log]
+      summary: List audit logs (Admin only)
+      operationId: listAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/SizeParam'
+        - name: userId
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: entityType
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedAuditLogResponse'
+
+# ============================================================
+# COMPONENTS
+# ============================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+      description: Page number (0-indexed)
+    SizeParam:
+      name: size
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Page size
+
+  schemas:
+    # ---- Auth Schemas ----
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@compliedu.com
+        password:
+          type: string
+          example: admin123
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiJ9...
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Token expiry in seconds
+          example: 86400
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        firstName:
+          type: string
+        lastName:
+          type: string
+        institutionId:
+          type: integer
+          format: int64
+          description: Required for INSTITUTE role
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        isActive:
+          type: boolean
+        role:
+          type: string
+          enum: [ADMIN, INSTITUTE]
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        role:
+          type: string
+          enum: [ADMIN, INSTITUTE]
+        firstName:
+          type: string
+        lastName:
+          type: string
+        institutionId:
+          type: integer
+          format: int64
+          nullable: true
+        institutionName:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    PagedUserResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Institution Schemas ----
+    CreateInstitutionRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: RGUKT Basar
+        address:
+          type: string
+        contactEmail:
+          type: string
+          format: email
+        contactPhone:
+          type: string
+        establishedYear:
+          type: integer
+          example: 2008
+        website:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pinCode:
+          type: string
+
+    InstitutionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        address:
+          type: string
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+        establishedYear:
+          type: integer
+        accreditationStatus:
+          type: string
+          enum: [PENDING, ACCREDITED, NOT_ACCREDITED]
+        website:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pinCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PagedInstitutionResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstitutionResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Pre-Qualifier Schemas ----
+    CreatePreQualifierRequest:
+      type: object
+      required: [institutionId]
+      properties:
+        institutionId:
+          type: integer
+          format: int64
+        programAppliedFor:
+          type: string
+
+    UpdatePreQualifierRequest:
+      type: object
+      description: Full pre-qualifier data update (all fields optional for partial save)
+      properties:
+        programAppliedFor:
+          type: string
+        instituteName:
+          type: string
+        yearOfEstablishment:
+          type: string
+        location:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pinCode:
+          type: string
+        website:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        headName:
+          type: string
+        headDesignation:
+          type: string
+        headAppointmentStatus:
+          type: string
+        headMobile:
+          type: string
+        headTelephone:
+          type: string
+        headEmail:
+          type: string
+        universityName:
+          type: string
+        universityCity:
+          type: string
+        universityState:
+          type: string
+        universityPinCode:
+          type: string
+        institutionType:
+          type: string
+        institutionTypeOther:
+          type: string
+        ownershipStatus:
+          type: string
+        ownershipStatusOther:
+          type: string
+        numUGPrograms:
+          type: string
+        numPGPrograms:
+          type: string
+        programsOffered:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramOffered'
+        programsForAccreditation:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramForAccreditation'
+        alliedDepartments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlliedDepartment'
+        programDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramDetail'
+        facultyDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacultyRow'
+        facultyDepartmentName:
+          type: string
+        numAlliedDepartments:
+          type: string
+        numUGEnggPrograms:
+          type: string
+        numPGEnggPrograms:
+          type: string
+        facultyCadre:
+          type: array
+          items:
+            $ref: '#/components/schemas/FacultyCadreRow'
+        hodName:
+          type: string
+        hodAppointment:
+          type: string
+        hodQualification:
+          type: string
+        hodQualificationOther:
+          type: string
+        sfrData:
+          $ref: '#/components/schemas/SFRData'
+        complianceStatus:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceRow'
+
+    PreQualifierResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        institutionId:
+          type: integer
+          format: int64
+        institutionName:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, IN_PROGRESS, SUBMITTED]
+        completionPercentage:
+          type: integer
+        lastModified:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        programAppliedFor:
+          type: string
+        instituteName:
+          type: string
+
+    PreQualifierDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/PreQualifierResponse'
+        - type: object
+          properties:
+            yearOfEstablishment:
+              type: string
+            location:
+              type: string
+            city:
+              type: string
+            state:
+              type: string
+            pinCode:
+              type: string
+            website:
+              type: string
+            email:
+              type: string
+            phone:
+              type: string
+            headName:
+              type: string
+            headDesignation:
+              type: string
+            headAppointmentStatus:
+              type: string
+            headMobile:
+              type: string
+            headTelephone:
+              type: string
+            headEmail:
+              type: string
+            universityName:
+              type: string
+            universityCity:
+              type: string
+            universityState:
+              type: string
+            universityPinCode:
+              type: string
+            institutionType:
+              type: string
+            institutionTypeOther:
+              type: string
+            ownershipStatus:
+              type: string
+            ownershipStatusOther:
+              type: string
+            numUGPrograms:
+              type: string
+            numPGPrograms:
+              type: string
+            programsOffered:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProgramOffered'
+            programsForAccreditation:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProgramForAccreditation'
+            alliedDepartments:
+              type: array
+              items:
+                $ref: '#/components/schemas/AlliedDepartment'
+            programDetails:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProgramDetail'
+            facultyDetails:
+              type: array
+              items:
+                $ref: '#/components/schemas/FacultyRow'
+            facultyDepartmentName:
+              type: string
+            numAlliedDepartments:
+              type: string
+            numUGEnggPrograms:
+              type: string
+            numPGEnggPrograms:
+              type: string
+            facultyCadre:
+              type: array
+              items:
+                $ref: '#/components/schemas/FacultyCadreRow'
+            hodName:
+              type: string
+            hodAppointment:
+              type: string
+            hodQualification:
+              type: string
+            hodQualificationOther:
+              type: string
+            sfrData:
+              $ref: '#/components/schemas/SFRData'
+            complianceStatus:
+              type: array
+              items:
+                $ref: '#/components/schemas/ComplianceRow'
+
+    PagedPreQualifierResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreQualifierResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Pre-Qualifier Sub-Schemas ----
+    ProgramOffered:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        level:
+          type: string
+          example: UG
+        name:
+          type: string
+          example: Computer Science and Engineering
+        yearOfStart:
+          type: string
+          example: "2010"
+        yearOfClose:
+          type: string
+        department:
+          type: string
+
+    ProgramForAccreditation:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        department:
+          type: string
+        program:
+          type: string
+
+    AlliedDepartment:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        department:
+          type: string
+        alliedDepartment:
+          type: string
+
+    ProgramDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        programName:
+          type: string
+        yearOfStart:
+          type: string
+        sanctionedIntake:
+          type: string
+        intakeChange:
+          type: string
+        yearOfChange:
+          type: string
+        aicteApproval:
+          type: string
+        accreditationStatus:
+          type: string
+        timesAccredited:
+          type: string
+
+    FacultyRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        panNo:
+          type: string
+        apaarId:
+          type: string
+        highestDegree:
+          type: string
+        university:
+          type: string
+        specialization:
+          type: string
+        dateOfJoining:
+          type: string
+          format: date
+        designationAtJoining:
+          type: string
+        dateOfJoiningDept:
+          type: string
+          format: date
+        presentDesignation:
+          type: string
+        dateDesignated:
+          type: string
+          format: date
+        associationNature:
+          type: string
+        contractType:
+          type: string
+        currentlyAssociated:
+          type: string
+        dateOfLeaving:
+          type: string
+          format: date
+          nullable: true
+        experience:
+          type: string
+
+    FacultyCadreRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        designation:
+          type: string
+        cayRegular:
+          type: string
+        cayContract:
+          type: string
+        caym1Regular:
+          type: string
+        caym1Contract:
+          type: string
+
+    SFRData:
+      type: object
+      properties:
+        ugPrograms:
+          type: array
+          items:
+            $ref: '#/components/schemas/SFRProgramRow'
+        pgPrograms:
+          type: array
+          items:
+            $ref: '#/components/schemas/SFRProgramRow'
+        cayDS:
+          type: string
+        caym1DS:
+          type: string
+        caym2DS:
+          type: string
+        cayAS:
+          type: string
+        caym1AS:
+          type: string
+        caym2AS:
+          type: string
+        cayDF:
+          type: string
+        caym1DF:
+          type: string
+        caym2DF:
+          type: string
+        cayAF:
+          type: string
+        caym1AF:
+          type: string
+        caym2AF:
+          type: string
+        cayFF:
+          type: string
+        caym1FF:
+          type: string
+        caym2FF:
+          type: string
+
+    SFRProgramRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        programName:
+          type: string
+        cayB:
+          type: string
+        cayC:
+          type: string
+        cayD:
+          type: string
+        caym1B:
+          type: string
+        caym1C:
+          type: string
+        caym1D:
+          type: string
+        caym2B:
+          type: string
+        caym2C:
+          type: string
+        caym2D:
+          type: string
+
+    ComplianceRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        qualifier:
+          type: string
+        currentStatus:
+          type: string
+        complianceStatus:
+          type: string
+
+    # ---- SAR Application Schemas ----
+    CreateSARApplicationRequest:
+      type: object
+      required: [institutionId, departmentName]
+      properties:
+        institutionId:
+          type: integer
+          format: int64
+        departmentName:
+          type: string
+          example: Computer Science and Engineering
+        applicationStartDate:
+          type: string
+          format: date-time
+        applicationEndDate:
+          type: string
+          format: date-time
+
+    UpdateSARApplicationRequest:
+      type: object
+      properties:
+        departmentName:
+          type: string
+        applicationEndDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, IN_PROGRESS, COMPLETED]
+
+    SARApplicationResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        applicationId:
+          type: string
+        institutionId:
+          type: integer
+          format: int64
+        institutionName:
+          type: string
+        departmentName:
+          type: string
+        applicationStartDate:
+          type: string
+          format: date-time
+        applicationEndDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, IN_PROGRESS, COMPLETED, SUBMITTED, UNDER_REVIEW, APPROVED, REJECTED]
+        completionPercentage:
+          type: integer
+        overallMarks:
+          type: number
+        maxOverallMarks:
+          type: number
+        lastModified:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SARApplicationDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/SARApplicationResponse'
+        - type: object
+          properties:
+            criteria:
+              type: array
+              items:
+                $ref: '#/components/schemas/CriteriaDetailResponse'
+
+    PagedSARApplicationResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/SARApplicationResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Criteria Schemas ----
+    CriteriaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        criteriaNumber:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        maxMarks:
+          type: number
+        completedSections:
+          type: integer
+        totalSections:
+          type: integer
+        totalMarks:
+          type: number
+        obtainedMarks:
+          type: number
+
+    CriteriaDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/CriteriaResponse'
+        - type: object
+          properties:
+            sections:
+              type: array
+              items:
+                $ref: '#/components/schemas/SectionResponse'
+
+    # ---- Section Schemas ----
+    UpdateSectionRequest:
+      type: object
+      properties:
+        content:
+          type: string
+          description: Rich text HTML content
+        instituteMarks:
+          type: number
+        isCompleted:
+          type: boolean
+
+    SectionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        sectionNumber:
+          type: string
+        title:
+          type: string
+        maxMarks:
+          type: number
+        instituteMarks:
+          type: number
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttachmentResponse'
+        isCompleted:
+          type: boolean
+        lastModified:
+          type: string
+          format: date-time
+        subSections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubSectionResponse'
+
+    UpdateSubSectionRequest:
+      type: object
+      properties:
+        content:
+          type: string
+        instituteMarks:
+          type: number
+        isCompleted:
+          type: boolean
+
+    SubSectionResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        subSectionNumber:
+          type: string
+        title:
+          type: string
+        maxMarks:
+          type: number
+        instituteMarks:
+          type: number
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttachmentResponse'
+        isCompleted:
+          type: boolean
+        lastModified:
+          type: string
+          format: date-time
+
+    AttachmentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+
+    # ---- Template Schemas ----
+    TemplateResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        label:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+          format: int64
+        downloadUrl:
+          type: string
+        uploadedAt:
+          type: string
+          format: date-time
+        uploadedBy:
+          type: string
+
+    PagedTemplateResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Notification Schemas ----
+    SendNotificationRequest:
+      type: object
+      required: [recipientEmail, subject, body, notificationType]
+      properties:
+        recipientEmail:
+          type: string
+          format: email
+        recipientName:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        notificationType:
+          type: string
+          enum: [REGISTRATION, PASSWORD_RESET, PQ_SUBMITTED, PQ_APPROVED, PQ_REJECTED, SAR_SUBMITTED, SAR_APPROVED, SAR_REJECTED, SAR_REVIEW_REMINDER, APPLICATION_STATUS_CHANGE, TEMPLATE_UPLOADED, GENERAL]
+
+    NotificationResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        recipientEmail:
+          type: string
+        recipientName:
+          type: string
+        subject:
+          type: string
+        notificationType:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, SENT, FAILED]
+        retryCount:
+          type: integer
+        errorMessage:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PagedNotificationResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Dashboard Schemas ----
+    AdminDashboardResponse:
+      type: object
+      properties:
+        totalInstitutions:
+          type: integer
+        totalUsers:
+          type: integer
+        pendingPreQualifiers:
+          type: integer
+        submittedPreQualifiers:
+          type: integer
+        pendingSARApplications:
+          type: integer
+        submittedSARApplications:
+          type: integer
+        approvedSARApplications:
+          type: integer
+        rejectedSARApplications:
+          type: integer
+        recentSubmissions:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [PRE_QUALIFIER, SAR]
+              institutionName:
+                type: string
+              departmentName:
+                type: string
+              submittedAt:
+                type: string
+                format: date-time
+        emailStats:
+          type: object
+          properties:
+            totalSent:
+              type: integer
+            totalPending:
+              type: integer
+            totalFailed:
+              type: integer
+
+    InstituteDashboardResponse:
+      type: object
+      properties:
+        institutionName:
+          type: string
+        accreditationStatus:
+          type: string
+        preQualifierStatus:
+          type: string
+          nullable: true
+        preQualifierCompletion:
+          type: integer
+        sarApplications:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                format: int64
+              departmentName:
+                type: string
+              status:
+                type: string
+              completionPercentage:
+                type: integer
+              lastModified:
+                type: string
+                format: date-time
+
+    # ---- Audit Log Schemas ----
+    AuditLogResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        userEmail:
+          type: string
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: integer
+          format: int64
+        oldValue:
+          type: object
+        newValue:
+          type: object
+        ipAddress:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PagedAuditLogResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        page:
+          type: integer
+        size:
+          type: integer
+
+    # ---- Common Schemas ----
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: Validation Failed
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+        timestamp:
+          type: string
+          format: date-time
