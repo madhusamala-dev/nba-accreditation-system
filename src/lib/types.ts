@@ -26,6 +26,20 @@ export interface SectionData {
   attachments: string[]; // File paths/URLs
   isCompleted: boolean;
   lastModified: string;
+  subsections?: SubSectionData[];
+}
+
+export interface SubSectionData {
+  id: string;
+  subSectionNumber: string;
+  title: string;
+  maxMarks: number;
+  content: string;
+  attachments: string[];
+  isCompleted: boolean;
+  lastModified: string;
+  tables?: string[];
+  images?: string[];
 }
 
 export interface Criteria {

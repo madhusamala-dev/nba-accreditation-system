@@ -1,4 +1,4 @@
-import { Institution, SARApplication, Application, Criteria, SectionData } from './types';
+import { Institution, SARApplication, Application, Criteria, SectionData, SubSectionData } from './types';
 
 // Mock institutions data
 export const institutions: Institution[] = [
@@ -34,60 +34,208 @@ export const institutions: Institution[] = [
   }
 ];
 
-// NBA Criteria Template
-const createCriteriaTemplate = (): Criteria[] => [
-  {
-    id: 'criteria-1',
-    criteriaNumber: 1,
-    title: 'Vision, Mission and Program Educational Objectives',
-    description: 'Assessment of institutional vision, mission, and program educational objectives',
-    maxMarks: 100,
-    sections: [
-      {
-        id: 'section-1-1',
-        sectionNumber: '1.1',
-        title: 'Vision and Mission of the Institution',
-        maxMarks: 25,
-        content: '',
-        attachments: [],
-        isCompleted: false,
-        lastModified: new Date().toISOString()
-      },
-      {
-        id: 'section-1-2',
-        sectionNumber: '1.2',
-        title: 'Vision and Mission of the Department',
-        maxMarks: 25,
-        content: '',
-        attachments: [],
-        isCompleted: false,
-        lastModified: new Date().toISOString()
-      },
-      {
-        id: 'section-1-3',
-        sectionNumber: '1.3',
-        title: 'Program Educational Objectives (PEOs)',
-        maxMarks: 25,
-        content: '',
-        attachments: [],
-        isCompleted: false,
-        lastModified: new Date().toISOString()
-      },
-      {
-        id: 'section-1-4',
-        sectionNumber: '1.4',
-        title: 'Assessment of PEOs',
-        maxMarks: 25,
-        content: '',
-        attachments: [],
-        isCompleted: false,
-        lastModified: new Date().toISOString()
-      }
-    ],
-    completedSections: 0,
-    totalMarks: 100,
-    obtainedMarks: 0
-  },
+// NBA Criteria 1 Template - Exact NBA structure
+const createCriteria1Template = (): Criteria => ({
+  id: 'criteria-1',
+  criteriaNumber: 1,
+  title: 'Vision, Mission and Program Educational Objectives',
+  description: 'Assessment of institutional vision, mission, and program educational objectives',
+  maxMarks: 60,
+  sections: [
+    {
+      id: 'section-1-1',
+      sectionNumber: '1.1',
+      title: 'Vision and Mission',
+      maxMarks: 5,
+      content: '',
+      attachments: [],
+      isCompleted: false,
+      lastModified: new Date().toISOString(),
+      subsections: [
+        {
+          id: 'sub-1-1-vision-inst',
+          subSectionNumber: '1.1',
+          title: 'Vision of Institute',
+          maxMarks: 1.25,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        },
+        {
+          id: 'sub-1-1-mission-inst',
+          subSectionNumber: '1.1',
+          title: 'Mission of Institute',
+          maxMarks: 1.25,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        },
+        {
+          id: 'sub-1-1-vision-dept',
+          subSectionNumber: '1.1',
+          title: 'Vision of Department',
+          maxMarks: 1.25,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        },
+        {
+          id: 'sub-1-1-mission-dept',
+          subSectionNumber: '1.1',
+          title: 'Mission of Department',
+          maxMarks: 1.25,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        }
+      ]
+    },
+    {
+      id: 'section-1-2',
+      sectionNumber: '1.2',
+      title: 'Program Educational Objectives (PEOs)',
+      maxMarks: 5,
+      content: '',
+      attachments: [],
+      isCompleted: false,
+      lastModified: new Date().toISOString(),
+      subsections: [
+        {
+          id: 'sub-1-2-peo',
+          subSectionNumber: '1.2',
+          title: 'PEO Statements',
+          maxMarks: 5,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        }
+      ]
+    },
+    {
+      id: 'section-1-3',
+      sectionNumber: '1.3',
+      title: 'Publication and Dissemination',
+      maxMarks: 10,
+      content: '',
+      attachments: [],
+      isCompleted: false,
+      lastModified: new Date().toISOString(),
+      subsections: [
+        {
+          id: 'sub-1-3-a',
+          subSectionNumber: '1.3(A)',
+          title: 'Adequacy in Publication',
+          maxMarks: 2,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString()
+        },
+        {
+          id: 'sub-1-3-b',
+          subSectionNumber: '1.3(B)',
+          title: 'Process of Dissemination',
+          maxMarks: 2,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          tables: []
+        },
+        {
+          id: 'sub-1-3-c',
+          subSectionNumber: '1.3(C)',
+          title: 'Awareness Among Stakeholders',
+          maxMarks: 6,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          tables: []
+        }
+      ]
+    },
+    {
+      id: 'section-1-4',
+      sectionNumber: '1.4',
+      title: 'Process for Defining Vision, Mission & PEOs',
+      maxMarks: 25,
+      content: '',
+      attachments: [],
+      isCompleted: false,
+      lastModified: new Date().toISOString(),
+      subsections: [
+        {
+          id: 'sub-1-4-a',
+          subSectionNumber: '1.4(A)',
+          title: 'Vision & Mission Definition Process',
+          maxMarks: 10,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          images: []
+        },
+        {
+          id: 'sub-1-4-b',
+          subSectionNumber: '1.4(B)',
+          title: 'PEO & PSO Definition Process',
+          maxMarks: 15,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          images: []
+        }
+      ]
+    },
+    {
+      id: 'section-1-5',
+      sectionNumber: '1.5',
+      title: 'Consistency of PEOs with Mission',
+      maxMarks: 15,
+      content: '',
+      attachments: [],
+      isCompleted: false,
+      lastModified: new Date().toISOString(),
+      subsections: [
+        {
+          id: 'sub-1-5-a',
+          subSectionNumber: '1.5(A)',
+          title: 'Justification of Mapping',
+          maxMarks: 10,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          tables: []
+        },
+        {
+          id: 'sub-1-5-b',
+          subSectionNumber: '1.5(B)',
+          title: 'Mapping Matrix',
+          maxMarks: 5,
+          content: '',
+          attachments: [],
+          isCompleted: false,
+          lastModified: new Date().toISOString(),
+          tables: []
+        }
+      ]
+    }
+  ],
+  completedSections: 0,
+  totalMarks: 60,
+  obtainedMarks: 0
+});
+
+// NBA Criteria Template for Criteria 2-7
+const createOtherCriteriaTemplates = (): Criteria[] => [
   {
     id: 'criteria-2',
     criteriaNumber: 2,
@@ -390,6 +538,12 @@ const createCriteriaTemplate = (): Criteria[] => [
     totalMarks: 100,
     obtainedMarks: 0
   }
+];
+
+// Combined criteria template
+const createCriteriaTemplate = (): Criteria[] => [
+  createCriteria1Template(),
+  ...createOtherCriteriaTemplates()
 ];
 
 // Mock SAR applications data with enhanced structure
