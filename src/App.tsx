@@ -4,8 +4,10 @@ import Login from './pages/Login';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import OnboardInstitution from './pages/admin/OnboardInstitution';
 import ViewAllInstitutions from './pages/admin/ViewAllInstitutions';
+import AdminTemplates from './pages/admin/AdminTemplates';
 import InstituteDashboard from './pages/institute/InstituteDashboard';
 import SARApplications from './pages/institute/SARApplications';
+import SARTemplates from './pages/institute/SARTemplates';
 import { getCurrentUser } from './lib/auth';
 import { User } from './lib/types';
 
@@ -88,6 +90,14 @@ function App() {
             <Navigate to="/login" replace />
           } 
         />
+        <Route 
+          path="/admin/templates" 
+          element={
+            currentUser?.role === 'admin' ? 
+            <AdminTemplates /> : 
+            <Navigate to="/login" replace />
+          } 
+        />
         
         {/* Institute Routes */}
         <Route 
@@ -103,6 +113,14 @@ function App() {
           element={
             currentUser?.role === 'institute' ? 
             <SARApplications /> : 
+            <Navigate to="/login" replace />
+          } 
+        />
+        <Route 
+          path="/institute/sar/templates" 
+          element={
+            currentUser?.role === 'institute' ? 
+            <SARTemplates /> : 
             <Navigate to="/login" replace />
           } 
         />
