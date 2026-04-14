@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +61,21 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   const [newAttachment, setNewAttachment] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [instituteMarks, setInstituteMarks] = useState<number>(0);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
+  // Refs to hold the latest values for auto-save without stale closures
+  const editorContentRef = useRef(editorContent);
+  const attachmentsRef = useRef(attachments);
+  const instituteMarksRef = useRef(instituteMarks);
+  const activeItemRef = useRef(activeItem);
+  const selectedCriteriaRef = useRef(selectedCriteria);
+
+  // Keep refs in sync
+  useEffect(() => { editorContentRef.current = editorContent; }, [editorContent]);
+  useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+  useEffect(() => { instituteMarksRef.current = instituteMarks; }, [instituteMarks]);
+  useEffect(() => { activeItemRef.current = activeItem; }, [activeItem]);
+  useEffect(() => { selectedCriteriaRef.current = selectedCriteria; }, [selectedCriteria]);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -71,8 +86,155 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       setAttachments([]);
       setExpandedSections({});
       setInstituteMarks(0);
+      setAutoSaveStatus('idle');
     }
   }, [isOpen]);
+
+  /**
+   * Core save logic extracted so it can be called both manually and automatically.
+   * Uses refs to always read the latest editor state.
+   * Returns the updated criteria if save was performed, or null if nothing to save.
+   */
+  const performSave = useCallback((
+    itemToSave: ActiveItem,
+    criteriaToSave: Criteria | null,
+    currentApplication: SARApplication | null,
+    content: string,
+    atts: string[],
+    marks: number
+  ): Criteria | null => {
+    if (!itemToSave || !criteriaToSave || !currentApplication) return null;
+
+    const getMaxMarks = (): number => {
+      if (itemToSave.type === 'section') {
+        const section = criteriaToSave.sections.find(s => s.id === itemToSave.sectionId);
+        return section?.maxMarks || 0;
+      }
+      const section = criteriaToSave.sections.find(s => s.id === itemToSave.sectionId);
+      const sub = section?.subsections?.find(ss => ss.id === itemToSave.subSectionId);
+      return sub?.maxMarks || 0;
+    };
+
+    const maxMarks = getMaxMarks();
+    const clampedMarks = Math.min(Math.max(0, marks), maxMarks);
+
+    let updatedCriteria: Criteria;
+
+    if (itemToSave.type === 'section') {
+      updatedCriteria = {
+        ...criteriaToSave,
+        sections: criteriaToSave.sections.map(s =>
+          s.id === itemToSave.sectionId
+            ? {
+                ...s,
+                content: content,
+                attachments: [...atts],
+                instituteMarks: clampedMarks,
+                isCompleted: content.trim().length > 0,
+                lastModified: new Date().toISOString()
+              }
+            : s
+        )
+      };
+    } else {
+      updatedCriteria = {
+        ...criteriaToSave,
+        sections: criteriaToSave.sections.map(s => {
+          if (s.id !== itemToSave.sectionId) return s;
+          const updatedSubs = s.subsections?.map(ss =>
+            ss.id === itemToSave.subSectionId
+              ? {
+                  ...ss,
+                  content: content,
+                  attachments: [...atts],
+                  instituteMarks: clampedMarks,
+                  isCompleted: content.trim().length > 0,
+                  lastModified: new Date().toISOString()
+                }
+              : ss
+          );
+          const allSubsCompleted = updatedSubs?.every(ss => ss.isCompleted) ?? false;
+          const sectionInstituteMarks = updatedSubs?.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0) ?? 0;
+          return {
+            ...s,
+            subsections: updatedSubs,
+            instituteMarks: sectionInstituteMarks,
+            isCompleted: allSubsCompleted,
+            lastModified: new Date().toISOString()
+          };
+        })
+      };
+    }
+
+    updatedCriteria.completedSections = updatedCriteria.sections.filter(s => s.isCompleted).length;
+    updatedCriteria.obtainedMarks = calculateCriteriaObtainedMarks(updatedCriteria);
+
+    const updatedApplication: SARApplication = {
+      ...currentApplication,
+      criteria: currentApplication.criteria.map(c =>
+        c.id === criteriaToSave.id ? updatedCriteria : c
+      ),
+      lastModified: new Date().toISOString()
+    };
+
+    let totalLeafs = 0;
+    let completedLeafs = 0;
+    updatedApplication.criteria.forEach(c => {
+      c.sections.forEach(s => {
+        if (s.subsections && s.subsections.length > 0) {
+          totalLeafs += s.subsections.length;
+          completedLeafs += s.subsections.filter(ss => ss.isCompleted).length;
+        } else {
+          totalLeafs += 1;
+          if (s.isCompleted) completedLeafs += 1;
+        }
+      });
+    });
+    updatedApplication.completionPercentage = totalLeafs > 0 ? Math.round((completedLeafs / totalLeafs) * 100) : 0;
+
+    updatedApplication.overallMarks = updatedApplication.criteria.reduce(
+      (sum, c) => sum + calculateCriteriaObtainedMarks(c), 0
+    );
+
+    if (updatedApplication.completionPercentage === 100) {
+      updatedApplication.status = 'completed';
+    } else if (updatedApplication.completionPercentage > 0) {
+      updatedApplication.status = 'in-progress';
+    }
+
+    onUpdate(currentApplication.id, updatedApplication);
+    return updatedCriteria;
+  }, [onUpdate]);
+
+  /**
+   * Auto-save the current active item using the latest ref values.
+   * Returns the updated criteria so callers can update local state.
+   */
+  const autoSaveCurrent = useCallback((): Criteria | null => {
+    const item = activeItemRef.current;
+    const criteria = selectedCriteriaRef.current;
+    if (!item || !criteria || !application) return null;
+
+    setAutoSaveStatus('saving');
+    const updatedCriteria = performSave(
+      item,
+      criteria,
+      application,
+      editorContentRef.current,
+      attachmentsRef.current,
+      instituteMarksRef.current
+    );
+
+    if (updatedCriteria) {
+      setAutoSaveStatus('saved');
+      // Reset status after a brief delay
+      setTimeout(() => setAutoSaveStatus('idle'), 1500);
+    } else {
+      setAutoSaveStatus('idle');
+    }
+
+    return updatedCriteria;
+  }, [application, performSave]);
 
   // Load content when active item changes
   useEffect(() => {
@@ -104,6 +266,12 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   if (!application) return null;
 
   const handleCriteriaSelect = (criteria: Criteria) => {
+    // Auto-save before switching criteria
+    const updatedCriteria = autoSaveCurrent();
+    if (updatedCriteria) {
+      setSelectedCriteria(updatedCriteria);
+    }
+    // Now switch to the new criteria
     setSelectedCriteria(criteria);
     setActiveItem(null);
     const expanded: Record<string, boolean> = {};
@@ -118,12 +286,53 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   const handleSelectSection = (sectionId: string) => {
     const section = selectedCriteria?.sections.find(s => s.id === sectionId);
     if (section && (!section.subsections || section.subsections.length === 0)) {
+      // Auto-save current before switching
+      const updatedCriteria = autoSaveCurrent();
+      if (updatedCriteria) {
+        setSelectedCriteria(updatedCriteria);
+      }
       setActiveItem({ type: 'section', sectionId });
     }
   };
 
   const handleSelectSubSection = (sectionId: string, subSectionId: string) => {
+    // Don't re-save if clicking the same item
+    if (
+      activeItem?.type === 'subsection' &&
+      activeItem.sectionId === sectionId &&
+      activeItem.subSectionId === subSectionId
+    ) {
+      return;
+    }
+    if (
+      activeItem?.type === 'section' &&
+      activeItem.sectionId === sectionId
+    ) {
+      // switching from parent section to its subsection — still auto-save
+    }
+
+    // Auto-save current before switching
+    const updatedCriteria = autoSaveCurrent();
+    if (updatedCriteria) {
+      setSelectedCriteria(updatedCriteria);
+    }
     setActiveItem({ type: 'subsection', sectionId, subSectionId });
+  };
+
+  const handleBackToCriteriaList = () => {
+    // Auto-save before going back to criteria list
+    const updatedCriteria = autoSaveCurrent();
+    if (updatedCriteria) {
+      setSelectedCriteria(updatedCriteria);
+    }
+    setSelectedCriteria(null);
+    setActiveItem(null);
+  };
+
+  const handleDialogClose = () => {
+    // Auto-save before closing dialog
+    autoSaveCurrent();
+    onClose();
   };
 
   const getActiveTitle = (): string => {
@@ -169,98 +378,24 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return section.instituteMarks ?? 0;
   };
 
+  /** Manual save — uses the same core logic */
   const handleSave = () => {
     if (!activeItem || !selectedCriteria || !application) return;
 
-    const maxMarks = getActiveMaxMarks();
-    const clampedMarks = Math.min(Math.max(0, instituteMarks), maxMarks);
-
-    let updatedCriteria: Criteria;
-
-    if (activeItem.type === 'section') {
-      updatedCriteria = {
-        ...selectedCriteria,
-        sections: selectedCriteria.sections.map(s =>
-          s.id === activeItem.sectionId
-            ? {
-                ...s,
-                content: editorContent,
-                attachments: [...attachments],
-                instituteMarks: clampedMarks,
-                isCompleted: editorContent.trim().length > 0,
-                lastModified: new Date().toISOString()
-              }
-            : s
-        )
-      };
-    } else {
-      updatedCriteria = {
-        ...selectedCriteria,
-        sections: selectedCriteria.sections.map(s => {
-          if (s.id !== activeItem.sectionId) return s;
-          const updatedSubs = s.subsections?.map(ss =>
-            ss.id === activeItem.subSectionId
-              ? {
-                  ...ss,
-                  content: editorContent,
-                  attachments: [...attachments],
-                  instituteMarks: clampedMarks,
-                  isCompleted: editorContent.trim().length > 0,
-                  lastModified: new Date().toISOString()
-                }
-              : ss
-          );
-          const allSubsCompleted = updatedSubs?.every(ss => ss.isCompleted) ?? false;
-          const sectionInstituteMarks = updatedSubs?.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0) ?? 0;
-          return {
-            ...s,
-            subsections: updatedSubs,
-            instituteMarks: sectionInstituteMarks,
-            isCompleted: allSubsCompleted,
-            lastModified: new Date().toISOString()
-          };
-        })
-      };
-    }
-
-    updatedCriteria.completedSections = updatedCriteria.sections.filter(s => s.isCompleted).length;
-    updatedCriteria.obtainedMarks = calculateCriteriaObtainedMarks(updatedCriteria);
-
-    const updatedApplication: SARApplication = {
-      ...application,
-      criteria: application.criteria.map(c =>
-        c.id === selectedCriteria.id ? updatedCriteria : c
-      ),
-      lastModified: new Date().toISOString()
-    };
-
-    let totalLeafs = 0;
-    let completedLeafs = 0;
-    updatedApplication.criteria.forEach(c => {
-      c.sections.forEach(s => {
-        if (s.subsections && s.subsections.length > 0) {
-          totalLeafs += s.subsections.length;
-          completedLeafs += s.subsections.filter(ss => ss.isCompleted).length;
-        } else {
-          totalLeafs += 1;
-          if (s.isCompleted) completedLeafs += 1;
-        }
-      });
-    });
-    updatedApplication.completionPercentage = totalLeafs > 0 ? Math.round((completedLeafs / totalLeafs) * 100) : 0;
-
-    updatedApplication.overallMarks = updatedApplication.criteria.reduce(
-      (sum, c) => sum + calculateCriteriaObtainedMarks(c), 0
+    const updatedCriteria = performSave(
+      activeItem,
+      selectedCriteria,
+      application,
+      editorContent,
+      attachments,
+      instituteMarks
     );
 
-    if (updatedApplication.completionPercentage === 100) {
-      updatedApplication.status = 'completed';
-    } else if (updatedApplication.completionPercentage > 0) {
-      updatedApplication.status = 'in-progress';
+    if (updatedCriteria) {
+      setSelectedCriteria(updatedCriteria);
+      setAutoSaveStatus('saved');
+      setTimeout(() => setAutoSaveStatus('idle'), 1500);
     }
-
-    onUpdate(application.id, updatedApplication);
-    setSelectedCriteria(updatedCriteria);
   };
 
   const handleAddAttachment = () => {
@@ -311,10 +446,34 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     }
   };
 
+  /** Render the auto-save status indicator */
+  const renderAutoSaveIndicator = () => {
+    if (autoSaveStatus === 'idle') return null;
+    return (
+      <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-all duration-300 ${
+        autoSaveStatus === 'saving'
+          ? 'bg-yellow-100 text-yellow-700'
+          : 'bg-green-100 text-green-700'
+      }`}>
+        {autoSaveStatus === 'saving' ? (
+          <>
+            <div className="w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+            <span>Saving...</span>
+          </>
+        ) : (
+          <>
+            <CheckCircle className="w-3 h-3" />
+            <span>Auto-saved</span>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // ===================== CRITERIA SELECTION VIEW =====================
   if (!selectedCriteria) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={handleDialogClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
             <FileText className="w-5 h-5" />
@@ -418,7 +577,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
   // ===================== CRITERIA DETAIL VIEW (Split Pane) =====================
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleDialogClose}>
       <DialogContent className="max-w-[95vw] w-[1400px] max-h-[92vh] overflow-hidden p-0">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
@@ -426,7 +585,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setSelectedCriteria(null); setActiveItem(null); }}
+              onClick={handleBackToCriteriaList}
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
@@ -440,6 +599,8 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Auto-save indicator in header */}
+            {renderAutoSaveIndicator()}
             <div className="text-right mr-2">
               <div className="text-xs text-gray-500">Institute Marks</div>
               <div className="text-sm font-bold text-blue-700">
@@ -607,9 +768,12 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         Provide detailed information for this section
                       </p>
                     </div>
-                    <Badge className="bg-blue-600 text-white text-sm px-3 py-1">
-                      {getActiveMaxMarks()} Marks
-                    </Badge>
+                    <div className="flex items-center gap-3">
+                      {renderAutoSaveIndicator()}
+                      <Badge className="bg-blue-600 text-white text-sm px-3 py-1">
+                        {getActiveMaxMarks()} Marks
+                      </Badge>
+                    </div>
                   </div>
                 </div>
 
@@ -627,6 +791,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                       <Label className="text-base font-medium">Section Content</Label>
                       <p className="text-sm text-gray-600 mb-3">
                         Use the rich text editor to format your content. Tables and images are supported.
+                        <span className="text-blue-600 ml-1 font-medium">Changes are auto-saved when you switch sections.</span>
                       </p>
                       {/* key forces re-mount when switching sections so editor gets fresh content */}
                       <RichTextEditor
@@ -724,14 +889,26 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                 </Tabs>
 
                 {/* Save Button */}
-                <div className="flex justify-end gap-2 pt-4 border-t">
-                  <Button variant="outline" onClick={() => setActiveItem(null)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Section
-                  </Button>
+                <div className="flex justify-between items-center gap-2 pt-4 border-t">
+                  <div className="text-xs text-gray-500">
+                    💡 Your changes are automatically saved when you switch sections
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => {
+                      // Auto-save before deselecting
+                      const updatedCriteria = autoSaveCurrent();
+                      if (updatedCriteria) {
+                        setSelectedCriteria(updatedCriteria);
+                      }
+                      setActiveItem(null);
+                    }}>
+                      Close Editor
+                    </Button>
+                    <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Section
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
