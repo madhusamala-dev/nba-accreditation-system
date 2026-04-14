@@ -22,6 +22,7 @@ export interface SectionData {
   sectionNumber: string;
   title: string;
   maxMarks: number;
+  instituteMarks: number;
   content: string; // Rich text content
   attachments: string[]; // File paths/URLs
   isCompleted: boolean;
@@ -34,6 +35,7 @@ export interface SubSectionData {
   subSectionNumber: string;
   title: string;
   maxMarks: number;
+  instituteMarks: number;
   content: string;
   attachments: string[];
   isCompleted: boolean;

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -23,7 +23,7 @@ import {
   ChevronRight,
   Award
 } from 'lucide-react';
-import type { SARApplication, Criteria, SectionData, SubSectionData } from '@/lib/types';
+import type { SARApplication, Criteria, SectionData } from '@/lib/types';
 
 interface SARCriteriaFormProps {
   isOpen: boolean;
@@ -53,6 +53,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   const [attachments, setAttachments] = useState<string[]>([]);
   const [newAttachment, setNewAttachment] = useState('');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [instituteMarks, setInstituteMarks] = useState<number>(0);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -62,6 +63,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       setEditorContent('');
       setAttachments([]);
       setExpandedSections({});
+      setInstituteMarks(0);
     }
   }, [isOpen]);
 
@@ -74,6 +76,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       if (section) {
         setEditorContent(section.content);
         setAttachments(section.attachments);
+        setInstituteMarks(section.instituteMarks ?? 0);
       }
     } else if (activeItem.type === 'subsection') {
       const section = selectedCriteria.sections.find(s => s.id === activeItem.sectionId);
@@ -81,6 +84,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       if (sub) {
         setEditorContent(sub.content);
         setAttachments(sub.attachments);
+        setInstituteMarks(sub.instituteMarks ?? 0);
       }
     }
   }, [activeItem, selectedCriteria]);
@@ -133,8 +137,34 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return sub?.maxMarks || 0;
   };
 
+  // Calculate criteria obtained marks from sections/subsections
+  const calculateCriteriaObtainedMarks = (criteria: Criteria): number => {
+    let total = 0;
+    criteria.sections.forEach(s => {
+      if (s.subsections && s.subsections.length > 0) {
+        s.subsections.forEach(ss => {
+          total += ss.instituteMarks ?? 0;
+        });
+      } else {
+        total += s.instituteMarks ?? 0;
+      }
+    });
+    return total;
+  };
+
+  // Calculate section institute marks (sum of subsections)
+  const getSectionInstituteMarks = (section: SectionData): number => {
+    if (section.subsections && section.subsections.length > 0) {
+      return section.subsections.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0);
+    }
+    return section.instituteMarks ?? 0;
+  };
+
   const handleSave = () => {
     if (!activeItem || !selectedCriteria || !application) return;
+
+    const maxMarks = getActiveMaxMarks();
+    const clampedMarks = Math.min(Math.max(0, instituteMarks), maxMarks);
 
     let updatedCriteria: Criteria;
 
@@ -147,6 +177,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                 ...s,
                 content: editorContent,
                 attachments,
+                instituteMarks: clampedMarks,
                 isCompleted: editorContent.trim().length > 0,
                 lastModified: new Date().toISOString()
               }
@@ -164,6 +195,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                   ...ss,
                   content: editorContent,
                   attachments,
+                  instituteMarks: clampedMarks,
                   isCompleted: editorContent.trim().length > 0,
                   lastModified: new Date().toISOString()
                 }
@@ -171,9 +203,12 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
           );
           // Mark section as completed if all subsections are completed
           const allSubsCompleted = updatedSubs?.every(ss => ss.isCompleted) ?? false;
+          // Sum up subsection institute marks for the parent section
+          const sectionInstituteMarks = updatedSubs?.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0) ?? 0;
           return {
             ...s,
             subsections: updatedSubs,
+            instituteMarks: sectionInstituteMarks,
             isCompleted: allSubsCompleted,
             lastModified: new Date().toISOString()
           };
@@ -183,6 +218,8 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
     // Update completed sections count
     updatedCriteria.completedSections = updatedCriteria.sections.filter(s => s.isCompleted).length;
+    // Update obtained marks for this criteria
+    updatedCriteria.obtainedMarks = calculateCriteriaObtainedMarks(updatedCriteria);
 
     const updatedApplication: SARApplication = {
       ...application,
@@ -207,6 +244,11 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       });
     });
     updatedApplication.completionPercentage = totalLeafs > 0 ? Math.round((completedLeafs / totalLeafs) * 100) : 0;
+
+    // Calculate overall marks
+    updatedApplication.overallMarks = updatedApplication.criteria.reduce(
+      (sum, c) => sum + calculateCriteriaObtainedMarks(c), 0
+    );
 
     if (updatedApplication.completionPercentage === 100) {
       updatedApplication.status = 'completed';
@@ -256,17 +298,25 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return section.subsections.every(ss => ss.isCompleted);
   };
 
+  const handleInstituteMarksChange = (value: string) => {
+    const num = parseFloat(value);
+    if (isNaN(num)) {
+      setInstituteMarks(0);
+    } else {
+      const maxMarks = getActiveMaxMarks();
+      setInstituteMarks(Math.min(Math.max(0, num), maxMarks));
+    }
+  };
+
   // ===================== CRITERIA SELECTION VIEW =====================
   if (!selectedCriteria) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              {application.departmentName} - SAR Criteria
-            </DialogTitle>
-          </DialogHeader>
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5" />
+            <h2 className="text-xl font-bold">{application.departmentName} - SAR Criteria</h2>
+          </div>
 
           <div className="space-y-6">
             {/* Application Info */}
@@ -275,6 +325,9 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                 <div>
                   <h3 className="font-semibold text-blue-900">{application.applicationId}</h3>
                   <p className="text-blue-700 text-sm">Overall Progress: {application.completionPercentage}%</p>
+                  <p className="text-blue-600 text-sm mt-1">
+                    Institute Marks: {application.overallMarks} / {application.maxOverallMarks}
+                  </p>
                 </div>
                 <Progress value={application.completionPercentage} className="w-32" />
               </div>
@@ -284,6 +337,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {application.criteria.map((criteria) => {
                 const progress = getCriteriaProgress(criteria);
+                const obtainedMarks = calculateCriteriaObtainedMarks(criteria);
                 return (
                   <Card
                     key={criteria.id}
@@ -320,6 +374,14 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         </div>
 
                         <Progress value={progress} className="h-2" />
+
+                        {/* Institute Marks Display */}
+                        <div className="bg-gray-50 rounded-md p-2 flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Institute Marks:</span>
+                          <span className="text-sm font-bold text-blue-700">
+                            {obtainedMarks} / {criteria.maxMarks}
+                          </span>
+                        </div>
 
                         <div className="flex items-center gap-2 text-sm">
                           {progress === 100 ? (
@@ -375,6 +437,12 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <div className="text-right mr-2">
+              <div className="text-xs text-gray-500">Institute Marks</div>
+              <div className="text-sm font-bold text-blue-700">
+                {calculateCriteriaObtainedMarks(selectedCriteria)} / {selectedCriteria.maxMarks}
+              </div>
+            </div>
             <Badge variant="outline" className="text-sm flex items-center gap-1">
               <Award className="w-3 h-3" />
               Total: {selectedCriteria.maxMarks} Marks
@@ -402,6 +470,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                   const hasSubsections = section.subsections && section.subsections.length > 0;
                   const isExpanded = expandedSections[section.id] ?? true;
                   const isFullyCompleted = isSectionFullyCompleted(section);
+                  const sectionMarks = getSectionInstituteMarks(section);
 
                   return (
                     <div key={section.id}>
@@ -445,9 +514,14 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                                 <span className="text-xs text-gray-500">
                                   {getSectionCompletionCount(section)}
                                 </span>
-                                <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                                  {section.maxMarks} Marks
-                                </Badge>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-medium text-blue-600">
+                                    {sectionMarks}/{section.maxMarks}
+                                  </span>
+                                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                    {section.maxMarks} Marks
+                                  </Badge>
+                                </div>
                               </div>
                             </div>
                           </button>
@@ -478,9 +552,14 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                                       <span className="text-sm text-gray-800 block truncate">
                                         {sub.subSectionNumber} {sub.title}
                                       </span>
-                                      <Badge variant="outline" className="text-xs px-1.5 py-0 mt-0.5">
-                                        {sub.maxMarks} Marks
-                                      </Badge>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        <span className="text-xs font-medium text-blue-600">
+                                          {sub.instituteMarks ?? 0}/{sub.maxMarks}
+                                        </span>
+                                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                                          {sub.maxMarks} Marks
+                                        </Badge>
+                                      </div>
                                     </div>
                                   </button>
                                 );
@@ -551,6 +630,40 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                         onChange={setEditorContent}
                         placeholder="Enter section content..."
                       />
+                    </div>
+
+                    {/* Marks Section */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                        <Award className="w-4 h-4" />
+                        Section Marks
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Total Marks (Read-only) */}
+                        <div>
+                          <Label className="text-sm text-gray-600 mb-1 block">Total Marks</Label>
+                          <div className="h-10 flex items-center px-3 bg-gray-100 border border-gray-200 rounded-md text-sm font-semibold text-gray-700">
+                            {getActiveMaxMarks()}
+                          </div>
+                        </div>
+                        {/* Institute Marks (Editable) */}
+                        <div>
+                          <Label className="text-sm text-gray-600 mb-1 block">Institute Marks</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={getActiveMaxMarks()}
+                            step="any"
+                            value={instituteMarks}
+                            onChange={(e) => handleInstituteMarksChange(e.target.value)}
+                            className="h-10 font-semibold text-blue-700 border-blue-300 focus:border-blue-500"
+                            placeholder="Enter marks"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Max: {getActiveMaxMarks()} marks
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </TabsContent>
 
