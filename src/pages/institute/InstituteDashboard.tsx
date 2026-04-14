@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, FileText, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Clock, FileText, TrendingUp, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -10,6 +11,7 @@ import type { SARApplication, Institution } from '@/lib/types';
 
 export default function InstituteDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [sarApplications, setSarApplications] = useState<SARApplication[]>([]);
   const [institution, setInstitution] = useState<Institution | null>(null);
 
@@ -41,6 +43,11 @@ export default function InstituteDashboard() {
       setSarApplications(updatedApps);
     }
   }, [user]);
+
+  // Navigate to SAR Applications page with the selected application
+  const handleApplicationClick = (application: SARApplication) => {
+    navigate(`/institute/sar?app=${application.id}`);
+  };
 
   // Function to get progress bar color based on progress percentage
   const getProgressBarColor = (progress: number) => {
@@ -212,21 +219,22 @@ export default function InstituteDashboard() {
                 SAR Applications
               </CardTitle>
               <CardDescription>
-                Track progress of your Self Assessment Report applications
+                Click on any application to fill or view its data
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {sortedApplications.map((application, index) => {
+                {sortedApplications.map((application) => {
                   const statusInfo = getStatusInfo(application.status, application.completionPercentage);
                   const isInstituteInfo = application.departmentName === 'Institute Information';
                   
                   return (
                     <div 
                       key={application.id} 
-                      className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md ${
-                        isInstituteInfo ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'
+                      className={`p-4 border rounded-lg transition-all duration-200 hover:shadow-md cursor-pointer group ${
+                        isInstituteInfo ? 'bg-blue-50 border-blue-200 hover:border-blue-400' : 'bg-white border-gray-200 hover:border-blue-300'
                       }`}
+                      onClick={() => handleApplicationClick(application)}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
@@ -238,7 +246,7 @@ export default function InstituteDashboard() {
                             </span>
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">
+                            <h3 className="font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
                               {application.departmentName}
                             </h3>
                             <p className="text-sm text-gray-600">
@@ -267,6 +275,7 @@ export default function InstituteDashboard() {
                               </span>
                             </div>
                           </div>
+                          <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
                         </div>
                       </div>
                     </div>

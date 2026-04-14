@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,6 +14,7 @@ import type { SARApplication } from '@/lib/types';
 
 export default function SARApplications() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedApplicationId, setSelectedApplicationId] = useState<string>('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isCriteriaFormOpen, setIsCriteriaFormOpen] = useState(false);
@@ -28,6 +30,19 @@ export default function SARApplications() {
       setSarApplications(apps);
     }
   }, [user]);
+
+  // Auto-open form when navigated from dashboard with ?app= query param
+  useEffect(() => {
+    const appId = searchParams.get('app');
+    if (appId && sarApplications.length > 0) {
+      const application = sarApplications.find(app => app.id === appId);
+      if (application) {
+        handleFillForm(application);
+        // Clear the query param after opening the form
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, sarApplications]);
 
   const handleProgressUpdate = (applicationId: string, progress: number) => {
     setSarApplications(prev => 
@@ -110,7 +125,6 @@ export default function SARApplications() {
 
     const currentDate = new Date();
     const dateString = currentDate.toISOString().slice(0, 10).replace(/-/g, '');
-    const formattedDate = currentDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
     const newApplications: SARApplication[] = selectedDepartments.map(deptCode => {
       const department = departments.find(d => d.code === deptCode);
