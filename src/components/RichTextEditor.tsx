@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Image } from '@tiptap/extension-image';
@@ -295,7 +295,6 @@ const LinkDialog: React.FC<LinkDialogProps> = ({ initialUrl, initialText, hasSel
       </div>
 
       <div className="space-y-3">
-        {/* Link Text (only show if no selection) */}
         {!hasSelection && (
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Display Text</label>
@@ -309,7 +308,6 @@ const LinkDialog: React.FC<LinkDialogProps> = ({ initialUrl, initialText, hasSel
           </div>
         )}
 
-        {/* URL */}
         <div>
           <label className="text-xs text-gray-500 mb-1 block">URL</label>
           <input
@@ -347,14 +345,18 @@ const LinkDialog: React.FC<LinkDialogProps> = ({ initialUrl, initialText, hasSel
 
 /* ------------------------------------------------------------------ */
 /*  Table Alignment & Operations Toolbar                               */
+/*  Uses a selection-change counter to re-render on every transaction  */
 /* ------------------------------------------------------------------ */
 interface TableToolbarProps {
   editor: ReturnType<typeof useEditor>;
+  /** Incremented on every editor transaction so the toolbar re-renders */
+  tick: number;
 }
 
-const TableContextToolbar: React.FC<TableToolbarProps> = ({ editor }) => {
+const TableContextToolbar: React.FC<TableToolbarProps> = ({ editor, tick: _tick }) => {
   if (!editor) return null;
 
+  // These are now re-evaluated every time _tick changes (i.e. on every transaction)
   const canMerge = editor.can().mergeCells();
   const canSplit = editor.can().splitCell();
 
@@ -397,20 +399,22 @@ const TableContextToolbar: React.FC<TableToolbarProps> = ({ editor }) => {
         size="sm"
         onClick={() => editor.chain().focus().mergeCells().run()}
         disabled={!canMerge}
-        title="Merge selected cells (select multiple cells first)"
-        className={`${canMerge ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300'}`}
+        title={canMerge ? 'Merge selected cells' : 'Select multiple cells to merge (click & drag across cells)'}
+        className={`${canMerge ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300 cursor-not-allowed'}`}
       >
         <Merge className="w-3.5 h-3.5" />
+        <span className="text-[10px] ml-0.5 hidden sm:inline">Merge</span>
       </Button>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => editor.chain().focus().splitCell().run()}
         disabled={!canSplit}
-        title="Split merged cell"
-        className={`${canSplit ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300'}`}
+        title={canSplit ? 'Split merged cell' : 'Place cursor in a merged cell to split it'}
+        className={`${canSplit ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300 cursor-not-allowed'}`}
       >
         <SplitSquareHorizontal className="w-3.5 h-3.5" />
+        <span className="text-[10px] ml-0.5 hidden sm:inline">Split</span>
       </Button>
 
       <div className="w-px h-5 bg-gray-300 mx-1" />
@@ -478,6 +482,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [showTableDialog, setShowTableDialog] = useState(false);
   const [showImageDialog, setShowImageDialog] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
+  // A counter that increments on every editor transaction to force toolbar re-renders
+  const [editorTick, setEditorTick] = useState(0);
 
   const editor = useEditor({
     extensions: [
@@ -544,6 +550,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       },
     },
   });
+
+  // Subscribe to every editor transaction (selection changes, content changes, etc.)
+  // so the toolbar buttons re-evaluate their enabled/disabled state.
+  useEffect(() => {
+    if (!editor) return;
+
+    const handleTransaction = () => {
+      setEditorTick((prev) => prev + 1);
+    };
+
+    editor.on('transaction', handleTransaction);
+    return () => {
+      editor.off('transaction', handleTransaction);
+    };
+  }, [editor]);
 
   if (!editor) return null;
 
@@ -859,7 +880,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         </div>
 
         {/* Table context toolbar (only visible when cursor is inside a table) */}
-        {isInsideTable && <TableContextToolbar editor={editor} />}
+        {isInsideTable && <TableContextToolbar editor={editor} tick={editorTick} />}
       </div>
 
       {/* ── Editor Content ── */}
