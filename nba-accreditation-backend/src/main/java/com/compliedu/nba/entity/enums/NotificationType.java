@@ -1,0 +1,16 @@
+package com.compliedu.nba.entity.enums;
+
+public enum NotificationType {
+    REGISTRATION,
+    PASSWORD_RESET,
+    PQ_SUBMITTED,
+    PQ_APPROVED,
+    PQ_REJECTED,
+    SAR_SUBMITTED,
+    SAR_APPROVED,
+    SAR_REJECTED,
+    SAR_REVIEW_REMINDER,
+    APPLICATION_STATUS_CHANGE,
+    TEMPLATE_UPLOADED,
+    GENERAL
+}

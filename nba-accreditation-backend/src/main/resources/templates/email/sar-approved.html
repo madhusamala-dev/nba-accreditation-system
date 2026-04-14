@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"/></head>
+<body>
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h2 style="color: #16a34a;">SAR Application Approved</h2>
+    <p>Dear <span th:text="${name}">User</span>,</p>
+    <p>Your SAR application for <strong th:text="${departmentName}">Department</strong> has been <strong style="color: #16a34a;">approved</strong>.</p>
+    <hr style="border: 1px solid #e5e7eb;"/>
+    <p style="color: #6b7280; font-size: 12px;">CompliEdu NBA Accreditation System</p>
+</div>
+</body>
+</html>
