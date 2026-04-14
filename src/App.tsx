@@ -6,6 +6,7 @@ import OnboardInstitution from './pages/admin/OnboardInstitution';
 import ViewAllInstitutions from './pages/admin/ViewAllInstitutions';
 import AdminTemplates from './pages/admin/AdminTemplates';
 import InstituteDashboard from './pages/institute/InstituteDashboard';
+import PreQualifiers from './pages/institute/PreQualifiers';
 import SARApplications from './pages/institute/SARApplications';
 import SARTemplates from './pages/institute/SARTemplates';
 import SARGuidelines from './pages/institute/SARGuidelines';
@@ -17,7 +18,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for current user on app load
     const checkAuth = () => {
       const user = getCurrentUser();
       console.log('App: Checking authentication, found user:', user);
@@ -27,7 +27,6 @@ function App() {
 
     checkAuth();
 
-    // Listen for storage changes (when user logs in/out)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'compliedu_current_user') {
         console.log('App: Storage changed, rechecking auth');
@@ -35,7 +34,6 @@ function App() {
       }
     };
 
-    // Listen for custom login events
     const handleLoginEvent = () => {
       console.log('App: Login event detected, rechecking auth');
       checkAuth();
@@ -67,72 +65,17 @@ function App() {
         <Route path="/login" element={<Login />} />
         
         {/* Admin Routes */}
-        <Route 
-          path="/admin/dashboard" 
-          element={
-            currentUser?.role === 'admin' ? 
-            <AdminDashboard /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/admin/onboard-institution" 
-          element={
-            currentUser?.role === 'admin' ? 
-            <OnboardInstitution /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/admin/view-institutions" 
-          element={
-            currentUser?.role === 'admin' ? 
-            <ViewAllInstitutions /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/admin/templates" 
-          element={
-            currentUser?.role === 'admin' ? 
-            <AdminTemplates /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
+        <Route path="/admin/dashboard" element={currentUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" replace />} />
+        <Route path="/admin/onboard-institution" element={currentUser?.role === 'admin' ? <OnboardInstitution /> : <Navigate to="/login" replace />} />
+        <Route path="/admin/view-institutions" element={currentUser?.role === 'admin' ? <ViewAllInstitutions /> : <Navigate to="/login" replace />} />
+        <Route path="/admin/templates" element={currentUser?.role === 'admin' ? <AdminTemplates /> : <Navigate to="/login" replace />} />
         
         {/* Institute Routes */}
-        <Route 
-          path="/institute/dashboard" 
-          element={
-            currentUser?.role === 'institute' ? 
-            <InstituteDashboard /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/institute/sar" 
-          element={
-            currentUser?.role === 'institute' ? 
-            <SARApplications /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/institute/sar/templates" 
-          element={
-            currentUser?.role === 'institute' ? 
-            <SARTemplates /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
-        <Route 
-          path="/institute/sar/guidelines" 
-          element={
-            currentUser?.role === 'institute' ? 
-            <SARGuidelines /> : 
-            <Navigate to="/login" replace />
-          } 
-        />
+        <Route path="/institute/dashboard" element={currentUser?.role === 'institute' ? <InstituteDashboard /> : <Navigate to="/login" replace />} />
+        <Route path="/institute/pre-qualifiers" element={currentUser?.role === 'institute' ? <PreQualifiers /> : <Navigate to="/login" replace />} />
+        <Route path="/institute/sar" element={currentUser?.role === 'institute' ? <SARApplications /> : <Navigate to="/login" replace />} />
+        <Route path="/institute/sar/templates" element={currentUser?.role === 'institute' ? <SARTemplates /> : <Navigate to="/login" replace />} />
+        <Route path="/institute/sar/guidelines" element={currentUser?.role === 'institute' ? <SARGuidelines /> : <Navigate to="/login" replace />} />
         
         {/* Default redirect */}
         <Route 
