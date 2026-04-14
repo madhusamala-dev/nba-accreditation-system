@@ -40,6 +40,8 @@ import {
   MoveVertical,
   Link as LinkIcon,
   Unlink,
+  Merge,
+  SplitSquareHorizontal,
 } from 'lucide-react';
 
 interface RichTextEditorProps {
@@ -344,7 +346,7 @@ const LinkDialog: React.FC<LinkDialogProps> = ({ initialUrl, initialText, hasSel
 };
 
 /* ------------------------------------------------------------------ */
-/*  Table Alignment Toolbar (shown when cursor is inside a table)      */
+/*  Table Alignment & Operations Toolbar                               */
 /* ------------------------------------------------------------------ */
 interface TableToolbarProps {
   editor: ReturnType<typeof useEditor>;
@@ -352,6 +354,9 @@ interface TableToolbarProps {
 
 const TableContextToolbar: React.FC<TableToolbarProps> = ({ editor }) => {
   if (!editor) return null;
+
+  const canMerge = editor.can().mergeCells();
+  const canSplit = editor.can().splitCell();
 
   return (
     <div className="flex items-center gap-1 border-l pl-2 ml-2">
@@ -382,6 +387,30 @@ const TableContextToolbar: React.FC<TableToolbarProps> = ({ editor }) => {
         title="Align table content right"
       >
         <AlignRight className="w-3.5 h-3.5" />
+      </Button>
+
+      <div className="w-px h-5 bg-gray-300 mx-1" />
+
+      {/* Merge / Split Cells */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => editor.chain().focus().mergeCells().run()}
+        disabled={!canMerge}
+        title="Merge selected cells (select multiple cells first)"
+        className={`${canMerge ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300'}`}
+      >
+        <Merge className="w-3.5 h-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => editor.chain().focus().splitCell().run()}
+        disabled={!canSplit}
+        title="Split merged cell"
+        className={`${canSplit ? 'text-purple-600 hover:text-purple-800 hover:bg-purple-50' : 'text-gray-300'}`}
+      >
+        <SplitSquareHorizontal className="w-3.5 h-3.5" />
       </Button>
 
       <div className="w-px h-5 bg-gray-300 mx-1" />
@@ -494,6 +523,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }),
       Table.configure({
         resizable: true,
+        allowTableNodeSelection: true,
       }),
       TableRow,
       TableHeader,
@@ -531,14 +561,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const handleLinkInsert = (url: string, text: string) => {
     if (editor.state.selection.empty && text) {
-      // No selection: insert new text with link
       editor
         .chain()
         .focus()
         .insertContent(`<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`)
         .run();
     } else {
-      // Has selection: convert selected text to link
       editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
     }
     setShowLinkDialog(false);
@@ -556,7 +584,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     editor.chain().focus().setHighlight({ color }).run();
   };
 
-  // Get current link info for the dialog
   const getCurrentLinkUrl = () => {
     const attrs = editor.getAttributes('link');
     return attrs.href || '';
@@ -981,6 +1008,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           background-color: #3b82f6;
           cursor: col-resize;
           z-index: 20;
+        }
+        /* Merged cell visual indicator */
+        .ProseMirror table td[colspan],
+        .ProseMirror table th[colspan],
+        .ProseMirror table td[rowspan],
+        .ProseMirror table th[rowspan] {
+          background-color: #faf5ff;
+          border-color: #c084fc;
+        }
+        .ProseMirror table .selectedCell[colspan],
+        .ProseMirror table .selectedCell[rowspan] {
+          background-color: #e9d5ff;
         }
 
         /* ===== Text alignment ===== */
