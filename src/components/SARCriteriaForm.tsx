@@ -41,6 +41,13 @@ type ActiveItem = {
   subSectionId: string;
 } | null;
 
+/** Build a unique key string from the active item so we can force re-mount the editor */
+const activeItemKey = (item: ActiveItem): string => {
+  if (!item) return '';
+  if (item.type === 'section') return `section-${item.sectionId}`;
+  return `subsection-${item.sectionId}-${item.subSectionId}`;
+};
+
 const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   isOpen,
   onClose,
@@ -69,13 +76,18 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
 
   // Load content when active item changes
   useEffect(() => {
-    if (!activeItem || !selectedCriteria) return;
+    if (!activeItem || !selectedCriteria) {
+      setEditorContent('');
+      setAttachments([]);
+      setInstituteMarks(0);
+      return;
+    }
 
     if (activeItem.type === 'section') {
       const section = selectedCriteria.sections.find(s => s.id === activeItem.sectionId);
       if (section) {
         setEditorContent(section.content);
-        setAttachments(section.attachments);
+        setAttachments([...section.attachments]);
         setInstituteMarks(section.instituteMarks ?? 0);
       }
     } else if (activeItem.type === 'subsection') {
@@ -83,7 +95,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       const sub = section?.subsections?.find(ss => ss.id === activeItem.subSectionId);
       if (sub) {
         setEditorContent(sub.content);
-        setAttachments(sub.attachments);
+        setAttachments([...sub.attachments]);
         setInstituteMarks(sub.instituteMarks ?? 0);
       }
     }
@@ -94,7 +106,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
   const handleCriteriaSelect = (criteria: Criteria) => {
     setSelectedCriteria(criteria);
     setActiveItem(null);
-    // Expand all sections by default
     const expanded: Record<string, boolean> = {};
     criteria.sections.forEach(s => { expanded[s.id] = true; });
     setExpandedSections(expanded);
@@ -137,7 +148,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return sub?.maxMarks || 0;
   };
 
-  // Calculate criteria obtained marks from sections/subsections
   const calculateCriteriaObtainedMarks = (criteria: Criteria): number => {
     let total = 0;
     criteria.sections.forEach(s => {
@@ -152,7 +162,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     return total;
   };
 
-  // Calculate section institute marks (sum of subsections)
   const getSectionInstituteMarks = (section: SectionData): number => {
     if (section.subsections && section.subsections.length > 0) {
       return section.subsections.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0);
@@ -176,7 +185,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
             ? {
                 ...s,
                 content: editorContent,
-                attachments,
+                attachments: [...attachments],
                 instituteMarks: clampedMarks,
                 isCompleted: editorContent.trim().length > 0,
                 lastModified: new Date().toISOString()
@@ -194,16 +203,14 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
               ? {
                   ...ss,
                   content: editorContent,
-                  attachments,
+                  attachments: [...attachments],
                   instituteMarks: clampedMarks,
                   isCompleted: editorContent.trim().length > 0,
                   lastModified: new Date().toISOString()
                 }
               : ss
           );
-          // Mark section as completed if all subsections are completed
           const allSubsCompleted = updatedSubs?.every(ss => ss.isCompleted) ?? false;
-          // Sum up subsection institute marks for the parent section
           const sectionInstituteMarks = updatedSubs?.reduce((sum, ss) => sum + (ss.instituteMarks ?? 0), 0) ?? 0;
           return {
             ...s,
@@ -216,9 +223,7 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       };
     }
 
-    // Update completed sections count
     updatedCriteria.completedSections = updatedCriteria.sections.filter(s => s.isCompleted).length;
-    // Update obtained marks for this criteria
     updatedCriteria.obtainedMarks = calculateCriteriaObtainedMarks(updatedCriteria);
 
     const updatedApplication: SARApplication = {
@@ -229,7 +234,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
       lastModified: new Date().toISOString()
     };
 
-    // Calculate overall completion - count all leaf items (subsections + sections without subsections)
     let totalLeafs = 0;
     let completedLeafs = 0;
     updatedApplication.criteria.forEach(c => {
@@ -245,7 +249,6 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
     });
     updatedApplication.completionPercentage = totalLeafs > 0 ? Math.round((completedLeafs / totalLeafs) * 100) : 0;
 
-    // Calculate overall marks
     updatedApplication.overallMarks = updatedApplication.criteria.reduce(
       (sum, c) => sum + calculateCriteriaObtainedMarks(c), 0
     );
@@ -625,7 +628,9 @@ const SARCriteriaForm: React.FC<SARCriteriaFormProps> = ({
                       <p className="text-sm text-gray-600 mb-3">
                         Use the rich text editor to format your content. Tables and images are supported.
                       </p>
+                      {/* key forces re-mount when switching sections so editor gets fresh content */}
                       <RichTextEditor
+                        key={activeItemKey(activeItem)}
                         content={editorContent}
                         onChange={setEditorContent}
                         placeholder="Enter section content..."

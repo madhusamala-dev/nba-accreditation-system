@@ -52,31 +52,17 @@ const createCriteria1Template = (): Criteria => ({
       attachments: [],
       isCompleted: false,
       lastModified: new Date().toISOString()
-      // No subsections - single section with one rich text editor
     },
     {
       id: 'section-1-2',
       sectionNumber: '1.2',
-      title: 'Program Educational Objectives (PEOs)',
+      title: 'State the Program Educational Objectives (PEOs)',
       maxMarks: 5,
       instituteMarks: 0,
       content: '',
       attachments: [],
       isCompleted: false,
-      lastModified: new Date().toISOString(),
-      subsections: [
-        {
-          id: 'sub-1-2-peo',
-          subSectionNumber: '1.2',
-          title: 'PEO Statements',
-          maxMarks: 5,
-          instituteMarks: 0,
-          content: '',
-          attachments: [],
-          isCompleted: false,
-          lastModified: new Date().toISOString()
-        }
-      ]
+      lastModified: new Date().toISOString()
     },
     {
       id: 'section-1-3',
@@ -552,7 +538,7 @@ export const sarApplications: SARApplication[] = [
     applicationEndDate: '2024-04-15T23:59:59Z',
     status: 'completed',
     completionPercentage: 100,
-    criteria: [], // Institute Information doesn't use criteria structure
+    criteria: [],
     overallMarks: 0,
     maxOverallMarks: 0,
     lastModified: '2024-03-10T15:30:00Z'
@@ -642,11 +628,9 @@ export const updateSectionData = (applicationId: string, criteriaId: string, sec
 
   Object.assign(section, updates, { lastModified: new Date().toISOString() });
 
-  // Update completion status
   const completedSections = criteria.sections.filter(s => s.isCompleted).length;
   criteria.completedSections = completedSections;
 
-  // Update application completion percentage
   const totalSections = application.criteria.reduce((sum, c) => sum + c.sections.length, 0);
   const totalCompletedSections = application.criteria.reduce((sum, c) => sum + c.completedSections, 0);
   application.completionPercentage = totalSections > 0 ? Math.round((totalCompletedSections / totalSections) * 100) : 0;
